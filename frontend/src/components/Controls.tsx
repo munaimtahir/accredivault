@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api, Control } from '../api';
+import { api, type Control } from '../api';
 import './Controls.css';
 
 const Controls: React.FC = () => {

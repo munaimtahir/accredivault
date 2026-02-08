@@ -17,10 +17,11 @@ class Command(BaseCommand):
             help='Path to CSV file'
         )
         parser.add_argument(
-            '--version',
+            '--pack-version',
             type=str,
             required=True,
-            help='Version number (e.g., 1.0)'
+            help='Version number (e.g., 1.0)',
+            dest='version'
         )
         parser.add_argument(
             '--publish',

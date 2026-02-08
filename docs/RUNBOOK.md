@@ -91,7 +91,7 @@ Follow the prompts to create an admin account:
 ```bash
 docker compose exec backend python manage.py import_phc_csv \
   --path apps/standards/seed_data/phc/Final_PHC_list.csv \
-  --version 1.0 \
+  --pack-version 1.0 \
   --publish
 ```
 
@@ -99,9 +99,9 @@ docker compose exec backend python manage.py import_phc_csv \
 ```
 Reading CSV from: /app/apps/standards/seed_data/phc/Final_PHC_list.csv
 File checksum: <sha256_hash>
-Parsed 118 controls from CSV
+Parsed 121 controls from CSV
 Created StandardPack: PHC PHC Lab Licensing Checklist v1.0 (draft)
-Created 118 controls
+Created 121 controls
 Published pack: PHC PHC Lab Licensing Checklist v1.0 (published)
 Successfully imported PHC checklist version 1.0
 ```
@@ -146,7 +146,7 @@ http://localhost/admin
 1. Login with the superuser credentials created in step 6
 2. Verify you can see:
    - Standard Packs (should show 1 pack: PHC v1.0, status: published)
-   - Controls (should show 118 controls)
+   - Controls (should show 121 controls)
    - Audit Events
 3. Click on Standard Packs → PHC Lab Licensing Checklist v1.0
 4. Verify the pack details and associated controls
@@ -234,7 +234,7 @@ Re-run with verbose output:
 ```bash
 docker compose exec backend python manage.py import_phc_csv \
   --path apps/standards/seed_data/phc/Final_PHC_list.csv \
-  --version 1.0 \
+  --pack-version 1.0 \
   --publish --verbosity 2
 ```
 
@@ -297,7 +297,7 @@ For production deployment:
 ✅ All 5 containers running (db, minio, backend, frontend, caddy)
 ✅ Health check returns "healthy" status
 ✅ Admin interface accessible via Caddy at /admin
-✅ API returns 118 controls at /api/v1/controls
+✅ API returns 121 controls at /api/v1/controls
 ✅ Frontend displays controls table
 ✅ PHC checklist imported and published
 ✅ Immutability enforced (cannot edit published controls in admin)

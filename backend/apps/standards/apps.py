@@ -2,4 +2,5 @@ from django.apps import AppConfig
 
 
 class StandardsConfig(AppConfig):
-    name = 'standards'
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'apps.standards'
