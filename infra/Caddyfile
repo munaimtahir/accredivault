@@ -1,0 +1,65 @@
+# Caddyfile for AccrediVault
+# Development configuration (use localhost)
+# For production, replace localhost with your.domain.tld
+
+localhost {
+  # API routes
+  handle_path /api/* {
+    reverse_proxy backend:8000
+  }
+
+  # Django admin
+  handle_path /admin/* {
+    reverse_proxy backend:8000
+  }
+
+  # Static files from Django (if needed)
+  handle_path /static/* {
+    reverse_proxy backend:8000
+  }
+
+  # Media files from Django (if needed)
+  handle_path /media/* {
+    reverse_proxy backend:8000
+  }
+
+  # Frontend (React app)
+  handle {
+    reverse_proxy frontend:5173
+  }
+
+  # Health check
+  handle /health {
+    respond "ok" 200
+  }
+}
+
+# Production template (uncomment and modify for production)
+# your.domain.tld {
+#   # Enable TLS
+#   tls your-email@example.com
+#
+#   # API routes
+#   handle_path /api/* {
+#     reverse_proxy backend:8000
+#   }
+#
+#   # Django admin
+#   handle_path /admin/* {
+#     reverse_proxy backend:8000
+#   }
+#
+#   # Static and media files
+#   handle_path /static/* {
+#     reverse_proxy backend:8000
+#   }
+#
+#   handle_path /media/* {
+#     reverse_proxy backend:8000
+#   }
+#
+#   # Frontend
+#   handle {
+#     reverse_proxy frontend:5173
+#   }
+# }

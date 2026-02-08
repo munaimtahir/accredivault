@@ -8,6 +8,8 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
     restart: unless-stopped
+    networks:
+      - internal
 
   minio:
     image: minio/minio:latest
@@ -17,15 +19,14 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin_change_me
     volumes:
       - minio_data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
     restart: unless-stopped
+    networks:
+      - internal
 
   backend:
-    image: python:3.12-slim
-    # placeholder: replace with your built image later
-    command: bash -lc "python -V && sleep infinity"
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgres://accredvault:change_me@db:5432/accredvault
       MINIO_ENDPOINT: http://minio:9000
@@ -33,10 +34,27 @@ services:
       MINIO_SECRET_KEY: minioadmin_change_me
       MINIO_BUCKET_EVIDENCE: evidence
       MINIO_BUCKET_EXPORTS: exports
+      SECRET_KEY: django-insecure-change-in-production
+      DEBUG: "True"
+      ALLOWED_HOSTS: "*"
     depends_on:
       - db
       - minio
     restart: unless-stopped
+    networks:
+      - internal
+    volumes:
+      - ../backend:/app
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_BASE_URL: http://localhost/api/v1
+    restart: unless-stopped
+    networks:
+      - internal
 
   caddy:
     image: caddy:2
@@ -49,7 +67,14 @@ services:
       - caddy_config:/config
     depends_on:
       - backend
+      - frontend
     restart: unless-stopped
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
 
 volumes:
   db_data:
