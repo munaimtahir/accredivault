@@ -1,0 +1,26 @@
+{
+  # Global options (adjust email for TLS)
+  email you@example.com
+}
+
+your.domain.tld {
+
+  # Frontend (static) - placeholder
+  root * /srv/frontend/dist
+  file_server
+
+  # Backend API
+  handle_path /api/* {
+    reverse_proxy backend:8000
+  }
+
+  # Django admin
+  handle_path /admin/* {
+    reverse_proxy backend:8000
+  }
+
+  # Health check
+  handle /health {
+    respond "ok" 200
+  }
+}
