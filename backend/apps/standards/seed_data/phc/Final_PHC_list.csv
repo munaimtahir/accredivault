@@ -1,0 +1,122 @@
+Section,Standard,Indicator
+Room & Building,Building Structure,The laboratory building is structurally sound and properly maintained
+Room & Building,Building Structure,Floors are smooth and easy to clean
+Room & Building,Building Structure,Walls are smooth and washable
+Room & Building,Building Structure,Ceilings are intact without cracks or leaks
+Room & Building,Building Structure,Adequate lighting throughout the facility
+Room & Building,Space Requirements,Sufficient space for all laboratory activities
+Room & Building,Space Requirements,Separate areas for specimen collection and processing
+Room & Building,Space Requirements,Designated area for waste management
+Room & Building,Space Requirements,Adequate storage space for supplies and reagents
+Room & Building,Space Requirements,Space for equipment maintenance and calibration
+Room & Building,Ventilation,Adequate natural or mechanical ventilation
+Room & Building,Ventilation,Windows are screened to prevent entry of insects
+Room & Building,Ventilation,Exhaust fans in areas generating fumes
+Room & Building,Ventilation,Proper air circulation throughout the laboratory
+Room & Building,Safety Features,Emergency exits clearly marked and accessible
+Room & Building,Safety Features,Fire extinguishers available and serviceable
+Room & Building,Safety Features,First aid kit accessible
+Room & Building,Safety Features,Eye wash station available where chemicals are used
+Room & Building,Safety Features,Emergency shower if hazardous chemicals used
+Room & Building,Safety Features,Spill kits available for chemical and biological spills
+Laboratory Services,Testing Services,Tests performed match facility registration
+Laboratory Services,Testing Services,Test menu displayed and available to clients
+Laboratory Services,Testing Services,Referral procedures documented
+Laboratory Services,Testing Services,Turn-around times established for each test
+Laboratory Services,Testing Services,Critical results reporting procedure in place
+Laboratory Services,Quality Control,Daily quality control performed for all tests
+Laboratory Services,Quality Control,QC records maintained and reviewed
+Laboratory Services,Quality Control,QC failures documented and investigated
+Laboratory Services,Quality Control,Corrective actions taken for QC failures
+Laboratory Services,Quality Control,External quality assessment participation
+Laboratory Services,Equipment,Equipment inventory maintained
+Laboratory Services,Equipment,Preventive maintenance schedule exists
+Laboratory Services,Equipment,Equipment cleaning logs maintained
+Laboratory Services,Equipment,Thermometers calibrated and monitored
+Laboratory Services,Equipment,Refrigerators monitored daily
+Laboratory Services,Equipment,Equipment operating manuals available
+Laboratory Services,Reagents & Supplies,Reagents stored at proper temperature
+Laboratory Services,Reagents & Supplies,Expiry dates monitored
+Laboratory Services,Reagents & Supplies,Reagents properly labeled
+Laboratory Services,Reagents & Supplies,MSDS available for all chemicals
+Laboratory Services,Reagents & Supplies,Inventory system for reagents and supplies
+Personnel,Staffing,Adequate number of qualified staff
+Personnel,Staffing,Staff qualifications documented
+Personnel,Staffing,Job descriptions available for all positions
+Personnel,Staffing,Duty rosters maintained
+Personnel,Staffing,Leave records maintained
+Personnel,Training,Training plan exists for all staff
+Personnel,Training,Training records maintained
+Personnel,Training,New staff receive orientation
+Personnel,Training,Continuing education opportunities provided
+Personnel,Training,Competency assessment performed annually
+Personnel,Health & Safety,Staff immunization records maintained
+Personnel,Health & Safety,Occupational health program exists
+Personnel,Health & Safety,Personal protective equipment available
+Personnel,Health & Safety,Safety training provided
+Personnel,Health & Safety,Accident/incident reporting system exists
+Safety & Biosafety,General Safety,Safety manual available
+Safety & Biosafety,General Safety,Safety officer designated
+Safety & Biosafety,General Safety,Safety committee meetings held
+Safety & Biosafety,General Safety,Safety inspections conducted
+Safety & Biosafety,General Safety,Safety signage posted appropriately
+Safety & Biosafety,Biosafety,Biosafety manual available
+Safety & Biosafety,Biosafety,Biosafety level appropriate for testing
+Safety & Biosafety,Biosafety,Biological safety cabinet certified if required
+Safety & Biosafety,Biosafety,Sharps containers available and properly used
+Safety & Biosafety,Biosafety,Biohazard waste segregated and disposed properly
+Safety & Biosafety,Chemical Safety,Chemicals properly labeled and stored
+Safety & Biosafety,Chemical Safety,Hazardous chemicals in ventilated areas
+Safety & Biosafety,Chemical Safety,Chemical spills managed appropriately
+Safety & Biosafety,Chemical Safety,Flammables stored in approved cabinets
+Safety & Biosafety,Chemical Safety,Chemical inventory maintained
+Waste Management,Waste Segregation,Color-coded waste bins available
+Waste Management,Waste Segregation,Waste segregated at point of generation
+Waste Management,Waste Segregation,Sharps disposed in puncture-proof containers
+Waste Management,Waste Segregation,Liquid waste managed appropriately
+Waste Management,Waste Segregation,Chemical waste segregated from biological waste
+Waste Management,Waste Treatment,Infectious waste autoclaved before disposal
+Waste Management,Waste Treatment,Alternative treatment if autoclave not available
+Waste Management,Waste Treatment,Treatment records maintained
+Waste Management,Waste Treatment,Waste containers sealed before removal
+Waste Management,Waste Treatment,Dedicated staff for waste management
+Waste Management,Waste Disposal,Licensed waste contractor used
+Waste Management,Waste Disposal,Waste disposal records maintained
+Waste Management,Waste Disposal,Waste storage area designated
+Waste Management,Waste Disposal,Waste removed at appropriate frequency
+Waste Management,Waste Disposal,Environmental clearance certificate available
+Quality Management,Documentation,Quality manual available
+Quality Management,Documentation,Standard operating procedures available for all tests
+Quality Management,Documentation,SOPs reviewed and updated annually
+Quality Management,Documentation,Document control system exists
+Quality Management,Documentation,Document change history maintained
+Quality Management,Quality Indicators,Quality indicators established
+Quality Management,Quality Indicators,Indicator data collected and analyzed
+Quality Management,Quality Indicators,Trends monitored
+Quality Management,Quality Indicators,Performance compared to benchmarks
+Quality Management,Quality Indicators,Quality improvement actions taken
+Quality Management,Management Review,Management reviews conducted quarterly
+Quality Management,Management Review,Review minutes documented
+Quality Management,Management Review,Action items tracked to completion
+Quality Management,Management Review,Resources allocated for quality improvement
+Quality Management,Management Review,Laboratory director participates in reviews
+Record Keeping,Test Records,Test requisitions properly completed
+Record Keeping,Test Records,Patient results recorded accurately
+Record Keeping,Test Records,Results authorized before release
+Record Keeping,Test Records,Critical results documented with notification
+Record Keeping,Test Records,Records filed systematically
+Record Keeping,Record Retention,Records retained per regulatory requirements
+Record Keeping,Record Retention,Archive system organized
+Record Keeping,Record Retention,Records retrievable when needed
+Record Keeping,Record Retention,Confidentiality maintained
+Record Keeping,Record Retention,Backup system for electronic records
+Client Services,Sample Collection,Sample collection procedures documented
+Client Services,Sample Collection,Patient identification verified
+Client Services,Sample Collection,Samples properly labeled
+Client Services,Sample Collection,Sample acceptance/rejection criteria defined
+Client Services,Sample Collection,Rejected samples documented
+Client Services,Results Reporting,Results reported in standard format
+Client Services,Results Reporting,Reference ranges indicated
+Client Services,Results Reporting,Critical results flagged
+Client Services,Results Reporting,Reports reviewed before release
+Client Services,Results Reporting,Report turnaround time monitored
