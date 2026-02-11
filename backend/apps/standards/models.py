@@ -60,7 +60,6 @@ class Control(models.Model):
     )
     control_code = models.CharField(
         max_length=50, 
-        unique=True, 
         db_index=True,
         help_text="e.g., PHC-ROM-001"
     )
@@ -76,6 +75,7 @@ class Control(models.Model):
         ordering = ['sort_order']
         verbose_name = 'Control'
         verbose_name_plural = 'Controls'
+        unique_together = [['standard_pack', 'control_code']]
     
     def __str__(self):
         return f"{self.control_code}: {self.section}"

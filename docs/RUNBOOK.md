@@ -106,7 +106,21 @@ Published pack: PHC PHC Lab Licensing Checklist v1.0 (published)
 Successfully imported PHC checklist version 1.0
 ```
 
-### 8. Create MinIO Buckets (Optional)
+### 8. Re-importing with New Codes (Prompt 1)
+
+If you need to re-import the checklist with the strict mappings and codes implemented in Prompt 1:
+
+```bash
+docker compose exec backend python manage.py import_phc_csv \
+  --path apps/standards/seed_data/phc/Final_PHC_list.csv \
+  --pack-version 1.0 \
+  --force-new-version 1.0+codes1 \
+  --publish
+```
+
+This will create a new standard pack `1.0+codes1` with the corrected codes (e.g., `PHC-CLI-001`).
+
+### 9. Create MinIO Buckets (Optional)
 
 Access MinIO console to create required buckets:
 
@@ -361,6 +375,33 @@ Expected response includes `control` information and a list of `evidence_items` 
 curl http://localhost/api/v1/evidence-files/<file_id>/download
 ```
 Returns a presigned URL valid for 10 minutes.
+
+### 5. Evidence API Reference (Quick Examples)
+
+**Create Evidence Item:**
+```bash
+curl -X POST http://localhost/api/v1/evidence-items \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Test", "category": "policy", "event_date": "2024-02-11"}'
+```
+
+**Upload Files:**
+```bash
+curl -X POST http://localhost/api/v1/evidence-items/<uuid>/files \
+  -F "files=@file.pdf"
+```
+
+**Link to Control:**
+```bash
+curl -X POST http://localhost/api/v1/controls/1/link-evidence \
+  -H "Content-Type: application/json" \
+  -d '{"evidence_item_id": "<uuid>", "note": "Relevance note"}'
+```
+
+**Get Timeline:**
+```bash
+curl http://localhost/api/v1/controls/1/timeline
+```
 
 ## Next Steps (Prompt 2)
 

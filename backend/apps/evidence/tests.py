@@ -58,7 +58,7 @@ class EvidenceAPITests(TestCase):
         self.assertEqual(EvidenceItem.objects.count(), 1)
         self.assertEqual(EvidenceItem.objects.first().title, 'Calibration Certificate')
 
-    @patch('apps.evidence.storage.get_s3_client')
+    @patch('apps.evidence.views.get_s3_client')
     def test_upload_file(self, mock_s3_client):
         evidence = EvidenceItem.objects.create(
             title='Test Evidence',
@@ -107,7 +107,7 @@ class EvidenceAPITests(TestCase):
         self.assertEqual(len(data['evidence_items']), 1)
         self.assertEqual(data['evidence_items'][0]['evidence_item']['id'], str(evidence.id))
 
-    @patch('apps.evidence.storage.get_s3_client')
+    @patch('apps.evidence.views.get_s3_client')
     def test_download_presigned_url(self, mock_s3_client):
         evidence = EvidenceItem.objects.create(
             title='Manual',

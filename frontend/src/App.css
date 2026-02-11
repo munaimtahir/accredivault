@@ -5,22 +5,49 @@
 }
 
 .app-nav {
-  background: #333;
-  padding: 1rem 2rem;
+  background: var(--surface);
+  padding: 1rem 2.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow-sm);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-brand {
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-links {
   display: flex;
   gap: 1rem;
 }
 
-.app-nav button {
-  padding: 0.5rem 1rem;
-  background: #667eea;
-  color: white;
+.nav-links button {
+  padding: 0.6rem 1.25rem;
+  background: transparent;
+  color: var(--text-muted);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  font-weight: 500;
 }
 
-.app-nav button:hover {
-  background: #5568d3;
+.nav-links button:hover {
+  color: var(--primary);
+  background: var(--background);
+}
+
+.nav-links button.active {
+  color: var(--primary);
+  background: rgba(79, 70, 229, 0.1);
 }

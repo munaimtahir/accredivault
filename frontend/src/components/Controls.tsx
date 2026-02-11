@@ -288,30 +288,38 @@ const Controls: React.FC = () => {
                     onChange={(e) => setEvidenceFiles(Array.from(e.target.files || []))}
                   />
                 </div>
-                <button type="submit" className="btn-primary" disabled={evidenceSubmitting}>
+                <button 
+                  type="submit" 
+                  className="btn-primary" 
+                  disabled={evidenceSubmitting}
+                  style={{ width: '100%', marginTop: '1rem' }}
+                >
                   {evidenceSubmitting ? 'Creating...' : 'Create Evidence'}
                 </button>
-                {evidenceSubmitError && <div className="error">{evidenceSubmitError}</div>}
-                {evidenceSubmitSuccess && <div className="success">{evidenceSubmitSuccess}</div>}
+                {evidenceSubmitError && <div className="error-banner">{evidenceSubmitError}</div>}
+                {evidenceSubmitSuccess && <div className="success-banner">{evidenceSubmitSuccess}</div>}
               </form>
             </div>
 
             <div className="evidence-list">
               <h3>Evidence Timeline</h3>
               {timelineLoading && <div className="loading">Loading timeline...</div>}
-              {timelineError && <div className="error">{timelineError}</div>}
+              {timelineError && <div className="error-banner">{timelineError}</div>}
 
               {!timelineLoading && !timelineError && (
                 <>
                   {timeline?.evidence_items?.length ? (
                     <div className="evidence-cards">
                       {timeline.evidence_items.map(link => (
-                        <div key={link.id} className="evidence-card">
+                        <div key={link.id} className="evidence-card animate-fade-in">
                           <div className="evidence-card-header">
                             <div>
                               <div className="evidence-title">{link.evidence_item.title}</div>
                               <div className="evidence-meta">
-                                {link.evidence_item.category} • {link.evidence_item.event_date}
+                                <span className="status-badge" style={{ padding: '2px 8px', fontSize: '0.7rem', marginRight: '8px' }}>
+                                  {link.evidence_item.category}
+                                </span>
+                                <span>{link.evidence_item.event_date}</span>
                               </div>
                             </div>
                           </div>
@@ -323,7 +331,9 @@ const Controls: React.FC = () => {
                               <ul>
                                 {link.evidence_item.files.map(file => (
                                   <li key={file.id}>
-                                    <span>{file.filename}</span>
+                                    <span style={{ fontSize: '0.875rem', color: 'var(--text)' }}>
+                                      📄 {file.filename}
+                                    </span>
                                     <button
                                       type="button"
                                       className="btn-secondary btn-small"
@@ -335,14 +345,18 @@ const Controls: React.FC = () => {
                                 ))}
                               </ul>
                             ) : (
-                              <div className="muted">No files uploaded.</div>
+                              <div className="muted" style={{ fontSize: '0.875rem' }}>No files uploaded.</div>
                             )}
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="muted">No evidence linked yet.</div>
+                    <div className="muted" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+                      <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📂</div>
+                      <p>No evidence linked yet.</p>
+                      <p style={{ fontSize: '0.875rem' }}>Upload your first piece of evidence using the form.</p>
+                    </div>
                   )}
                 </>
               )}

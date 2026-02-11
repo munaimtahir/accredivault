@@ -9,12 +9,29 @@ function App() {
   return (
     <>
       <nav className="app-nav">
-        <button onClick={() => setCurrentPage('login')}>Login (Placeholder)</button>
-        <button onClick={() => setCurrentPage('controls')}>Controls</button>
+        <div className="nav-brand">
+          <span style={{ fontSize: '1.5rem' }}>🛡️</span> AccrediVault
+        </div>
+        <div className="nav-links">
+          <button
+            className={currentPage === 'controls' ? 'active' : ''}
+            onClick={() => setCurrentPage('controls')}
+          >
+            Dashboard
+          </button>
+          <button
+            className={currentPage === 'login' ? 'active' : ''}
+            onClick={() => setCurrentPage('login')}
+          >
+            Settings
+          </button>
+        </div>
       </nav>
-      
-      {currentPage === 'login' && <Login />}
-      {currentPage === 'controls' && <Controls />}
+
+      <main className="animate-fade-in">
+        {currentPage === 'login' && <Login />}
+        {currentPage === 'controls' && <Controls />}
+      </main>
     </>
   )
 }

@@ -188,7 +188,7 @@ class Command(BaseCommand):
                     name='PHC Lab Licensing Checklist',
                     version=version,
                     status='draft',
-                    checksum=checksum,
+                    checksum=checksum if not force_new_version else f"{checksum[:50]}-{version}",
                     source_file_name=csv_path.name,
                 )
                 
