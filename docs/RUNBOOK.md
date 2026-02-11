@@ -302,13 +302,71 @@ For production deployment:
 ✅ PHC checklist imported and published
 ✅ Immutability enforced (cannot edit published controls in admin)
 
-## Next Steps (Prompt 1)
+## Evidence MVP (Prompt 1) Operations
 
-The following features will be implemented in Prompt 1:
-- [ ] Evidence upload functionality
-- [ ] Evidence-to-Control linking
-- [ ] MinIO file storage integration (full implementation)
-- [ ] User authentication and authorization
-- [ ] Evidence management UI
-- [ ] Evidence rules engine (basic)
-- [ ] Audit logging for all actions
+### 1. Create Evidence
+You can create evidence items directly from the Control Detail view in the frontend, or via API.
+
+**API Example:**
+```bash
+# Create Evidence Item
+curl -X POST http://localhost/api/v1/evidence-items \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Calibration Certificate 2024",
+    "category": "certificate",
+    "event_date": "2024-02-11",
+    "notes": "Annual calibration for centrifuge"
+  }'
+
+# Upload File to Evidence Item (returns file_id)
+curl -X POST http://localhost/api/v1/evidence-items/<evidence_item_id>/files \
+  -F "files=@/path/to/your/file.pdf"
+
+# Link Evidence to Control
+curl -X POST http://localhost/api/v1/controls/<control_id>/link-evidence \
+  -H "Content-Type: application/json" \
+  -d '{
+    "evidence_item_id": "<evidence_item_id>",
+    "note": "Specifically addresses calibration requirements"
+  }'
+```
+
+### 2. Verify MinIO Bucket
+The application expects a bucket named `evidence` (configurable via `MINIO_BUCKET_EVIDENCE`).
+
+**Verify via Health Check:**
+```bash
+curl http://localhost/api/v1/health
+```
+Expect `"minio_buckets": ["evidence", ...]`.
+
+**Manual Creation (if needed):**
+Access MinIO Console at `http://localhost:9001` (login with `minioadmin` / `minioadmin_change_me`) and create a bucket named `evidence`.
+
+**Verify Files in MinIO:**
+```bash
+# Exec into minio container and list files
+docker compose exec minio ls -R /data/evidence
+```
+
+### 3. Verify Timeline
+```bash
+curl http://localhost/api/v1/controls/<control_id>/timeline | jq
+```
+Expected response includes `control` information and a list of `evidence_items` (which are Link objects).
+
+### 4. Test Download
+```bash
+curl http://localhost/api/v1/evidence-files/<file_id>/download
+```
+Returns a presigned URL valid for 10 minutes.
+
+## Next Steps (Prompt 2)
+
+The following features will be implemented in Prompt 2:
+- [ ] EvidenceRule system (automated status checks)
+- [ ] Control Status engine (calculating status from linked evidence)
+- [ ] Status rollups (Section -> Standard Pack)
+- [ ] Dashboard with progress visualization
+- [ ] Automated evidence expiration alerts

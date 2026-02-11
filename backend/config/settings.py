@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'apps.standards',
     'apps.users',
     'apps.audit',
+    'apps.evidence',
 ]
 
 MIDDLEWARE = [
@@ -148,15 +149,26 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Django REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',  # For MVP, we'll add auth in Prompt 1
+        'rest_framework.permissions.AllowAny',  # TODO: Enforce auth/RBAC in Prompt 3
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 100,
 }
 
-# CORS settings (permissive for MVP)
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS settings
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
+    if origin.strip()
+]
+CORS_ALLOW_ALL_ORIGINS = not bool(CORS_ALLOWED_ORIGINS)
 CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',')
+    if origin.strip()
+]
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # MinIO / S3 Storage Configuration
 USE_S3 = os.getenv('USE_S3', 'True') == 'True'

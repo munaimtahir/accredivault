@@ -29,10 +29,21 @@ echo "$HEALTH" | grep -q '"minio":"ok"' && echo "  MinIO OK" || { echo "  ✗ Mi
 echo "✓ Checking controls API..."
 CONTROLS=$(curl -k -s https://localhost/api/v1/controls/)
 CONTROL_COUNT=$(echo "$CONTROLS" | grep -o '"count":[0-9]*' | grep -o '[0-9]*')
-if [ "$CONTROL_COUNT" -eq 121 ]; then
+
+echo "✓ Running PHC CSV audit for expected control count..."
+CSV_PATH="apps/standards/seed_data/phc/Final_PHC_list.csv"
+AUDIT_OUTPUT=$(docker compose exec -T backend python manage.py phc_import_audit --path "$CSV_PATH")
+EXPECTED_COUNT=$(echo "$AUDIT_OUTPUT" | grep -E "Unique non-empty rows:" | grep -Eo "[0-9]+")
+
+if [ -z "$EXPECTED_COUNT" ]; then
+    echo "  ✗ Failed to determine expected control count from audit"
+    exit 1
+fi
+
+if [ "$CONTROL_COUNT" -eq "$EXPECTED_COUNT" ]; then
     echo "  Found $CONTROL_COUNT controls ✓"
 else
-    echo "  ✗ Expected 121 controls, found $CONTROL_COUNT"
+    echo "  ✗ Expected $EXPECTED_COUNT controls, found $CONTROL_COUNT"
     exit 1
 fi
 
@@ -70,11 +81,16 @@ PACK_COUNT=$(echo "$PACK_COUNT" | tr -d '\r')
 
 DB_CONTROL_COUNT=$(docker compose exec -T backend python manage.py shell << 'EOF'
 from apps.standards.models import Control
-print(Control.objects.count())
+from apps.standards.models import StandardPack
+pack = StandardPack.objects.order_by('-created_at').first()
+if not pack:
+    print(0)
+else:
+    print(Control.objects.filter(standard_pack=pack).count())
 EOF
 )
 DB_CONTROL_COUNT=$(echo "$DB_CONTROL_COUNT" | tr -d '\r')
-[ "$DB_CONTROL_COUNT" -eq 121 ] && echo "  Control count: $DB_CONTROL_COUNT ✓" || { echo "  ✗ Expected 121 controls, found $DB_CONTROL_COUNT"; exit 1; }
+[ "$DB_CONTROL_COUNT" -eq "$EXPECTED_COUNT" ] && echo "  Control count: $DB_CONTROL_COUNT ✓" || { echo "  ✗ Expected $EXPECTED_COUNT controls, found $DB_CONTROL_COUNT"; exit 1; }
 
 # Check immutability
 echo "✓ Testing immutability enforcement..."
@@ -103,7 +119,7 @@ echo ""
 echo "Summary:"
 echo "  - All services running"
 echo "  - Health checks passing"
-echo "  - API serving 121 controls"
+echo "  - API serving $EXPECTED_COUNT controls"
 echo "  - Frontend accessible"
 echo "  - Admin interface accessible"
 echo "  - Database records correct"

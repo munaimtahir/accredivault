@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api, type Control } from '../api';
+import { api, type Control, type ControlTimeline } from '../api';
 import './Controls.css';
 
 const Controls: React.FC = () => {
@@ -9,6 +9,19 @@ const Controls: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [sectionFilter, setSectionFilter] = useState('');
   const [sections, setSections] = useState<string[]>([]);
+  const [selectedControl, setSelectedControl] = useState<Control | null>(null);
+  const [timeline, setTimeline] = useState<ControlTimeline | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+
+  const [evidenceTitle, setEvidenceTitle] = useState('');
+  const [evidenceCategory, setEvidenceCategory] = useState('');
+  const [evidenceDate, setEvidenceDate] = useState('');
+  const [evidenceNotes, setEvidenceNotes] = useState('');
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [evidenceSubmitting, setEvidenceSubmitting] = useState(false);
+  const [evidenceSubmitError, setEvidenceSubmitError] = useState<string | null>(null);
+  const [evidenceSubmitSuccess, setEvidenceSubmitSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     loadControls();
@@ -20,7 +33,7 @@ const Controls: React.FC = () => {
       setError(null);
       const data = await api.getControls({ section, q });
       setControls(data);
-      
+
       // Extract unique sections
       const uniqueSections = Array.from(new Set(data.map(c => c.section))).sort();
       setSections(uniqueSections);
@@ -28,6 +41,19 @@ const Controls: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Failed to load controls');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadTimeline = async (controlId: number) => {
+    try {
+      setTimelineLoading(true);
+      setTimelineError(null);
+      const data = await api.getControlTimeline(controlId);
+      setTimeline(data);
+    } catch (err) {
+      setTimelineError(err instanceof Error ? err.message : 'Failed to load evidence timeline');
+    } finally {
+      setTimelineLoading(false);
     }
   };
 
@@ -40,6 +66,61 @@ const Controls: React.FC = () => {
     setSearchQuery('');
     setSectionFilter('');
     loadControls();
+  };
+
+  const handleSelectControl = (control: Control) => {
+    setSelectedControl(control);
+    loadTimeline(control.id);
+  };
+
+  const handleCreateEvidence = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedControl) return;
+    if (!evidenceTitle || !evidenceCategory || !evidenceDate) {
+      setEvidenceSubmitError('Title, category, and date are required.');
+      return;
+    }
+
+    try {
+      setEvidenceSubmitting(true);
+      setEvidenceSubmitError(null);
+      setEvidenceSubmitSuccess(null);
+
+      const evidence = await api.createEvidenceItem({
+        title: evidenceTitle,
+        category: evidenceCategory,
+        event_date: evidenceDate,
+        notes: evidenceNotes || undefined,
+      });
+
+      await api.linkEvidenceToControl(selectedControl.id, evidence.id);
+
+      if (evidenceFiles.length > 0) {
+        await api.uploadEvidenceFiles(evidence.id, evidenceFiles);
+      }
+
+      setEvidenceTitle('');
+      setEvidenceCategory('');
+      setEvidenceDate('');
+      setEvidenceNotes('');
+      setEvidenceFiles([]);
+      setEvidenceSubmitSuccess('Evidence created and linked.');
+
+      await loadTimeline(selectedControl.id);
+    } catch (err) {
+      setEvidenceSubmitError(err instanceof Error ? err.message : 'Failed to create evidence');
+    } finally {
+      setEvidenceSubmitting(false);
+    }
+  };
+
+  const handleDownloadFile = async (fileId: string) => {
+    try {
+      const data = await api.downloadEvidenceFile(fileId);
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setTimelineError(err instanceof Error ? err.message : 'Failed to download file');
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -118,7 +199,11 @@ const Controls: React.FC = () => {
               </thead>
               <tbody>
                 {controls.map(control => (
-                  <tr key={control.id}>
+                  <tr
+                    key={control.id}
+                    className={selectedControl?.id === control.id ? 'selected-row' : ''}
+                    onClick={() => handleSelectControl(control)}
+                  >
                     <td className="control-code">{control.control_code}</td>
                     <td>{control.section}</td>
                     <td className="indicator">{control.indicator}</td>
@@ -129,6 +214,141 @@ const Controls: React.FC = () => {
             </table>
           </div>
         </>
+      )}
+
+      {selectedControl && (
+        <div className="control-detail">
+          <div className="control-detail-header">
+            <div>
+              <h2>{selectedControl.control_code} Evidence</h2>
+              <p>{selectedControl.indicator}</p>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setSelectedControl(null);
+                setTimeline(null);
+                setTimelineError(null);
+              }}
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="evidence-grid">
+            <div className="evidence-form">
+              <h3>Create Evidence</h3>
+              <form onSubmit={handleCreateEvidence}>
+                <div className="form-group">
+                  <label>Title</label>
+                  <input
+                    type="text"
+                    value={evidenceTitle}
+                    onChange={(e) => setEvidenceTitle(e.target.value)}
+                    placeholder="e.g., Calibration Certificate"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Category</label>
+                  <select
+                    value={evidenceCategory}
+                    onChange={(e) => setEvidenceCategory(e.target.value)}
+                  >
+                    <option value="">Select Category</option>
+                    <option value="policy">Policy</option>
+                    <option value="procedure">Procedure</option>
+                    <option value="certificate">Certificate</option>
+                    <option value="log">Log</option>
+                    <option value="photo">Photo</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Event Date</label>
+                  <input
+                    type="date"
+                    value={evidenceDate}
+                    onChange={(e) => setEvidenceDate(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Notes</label>
+                  <textarea
+                    value={evidenceNotes}
+                    onChange={(e) => setEvidenceNotes(e.target.value)}
+                    placeholder="Optional notes"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Files</label>
+                  <input
+                    type="file"
+                    multiple
+                    onChange={(e) => setEvidenceFiles(Array.from(e.target.files || []))}
+                  />
+                </div>
+                <button type="submit" className="btn-primary" disabled={evidenceSubmitting}>
+                  {evidenceSubmitting ? 'Creating...' : 'Create Evidence'}
+                </button>
+                {evidenceSubmitError && <div className="error">{evidenceSubmitError}</div>}
+                {evidenceSubmitSuccess && <div className="success">{evidenceSubmitSuccess}</div>}
+              </form>
+            </div>
+
+            <div className="evidence-list">
+              <h3>Evidence Timeline</h3>
+              {timelineLoading && <div className="loading">Loading timeline...</div>}
+              {timelineError && <div className="error">{timelineError}</div>}
+
+              {!timelineLoading && !timelineError && (
+                <>
+                  {timeline?.evidence_items?.length ? (
+                    <div className="evidence-cards">
+                      {timeline.evidence_items.map(link => (
+                        <div key={link.id} className="evidence-card">
+                          <div className="evidence-card-header">
+                            <div>
+                              <div className="evidence-title">{link.evidence_item.title}</div>
+                              <div className="evidence-meta">
+                                {link.evidence_item.category} • {link.evidence_item.event_date}
+                              </div>
+                            </div>
+                          </div>
+                          {link.evidence_item.notes && (
+                            <p className="evidence-notes">{link.evidence_item.notes}</p>
+                          )}
+                          <div className="evidence-files">
+                            {link.evidence_item.files?.length ? (
+                              <ul>
+                                {link.evidence_item.files.map(file => (
+                                  <li key={file.id}>
+                                    <span>{file.filename}</span>
+                                    <button
+                                      type="button"
+                                      className="btn-secondary btn-small"
+                                      onClick={() => handleDownloadFile(file.id)}
+                                    >
+                                      Download
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="muted">No files uploaded.</div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="muted">No evidence linked yet.</div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

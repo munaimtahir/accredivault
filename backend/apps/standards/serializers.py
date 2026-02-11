@@ -7,7 +7,7 @@ class ControlSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Control
-        fields = ['id', 'control_code', 'section', 'indicator', 'sort_order', 'active', 'status']
+        fields = ['id', 'control_code', 'section', 'standard', 'indicator', 'sort_order', 'active', 'status']
     
     def get_status(self, obj):
         # Hardcoded for MVP (Prompt 0)

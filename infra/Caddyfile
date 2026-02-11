@@ -1,8 +1,7 @@
-# Caddyfile for AccrediVault
-# Development configuration (use localhost)
-# For production, replace localhost with your.domain.tld
+# Internal Caddy for AccrediVault behind host Caddy.
+# Host Caddy terminates TLS and forwards traffic to this service on 127.0.0.1:8016.
 
-localhost {
+:80 {
   # API routes
   handle /api/* {
     reverse_proxy backend:8000
@@ -33,33 +32,3 @@ localhost {
     respond "ok" 200
   }
 }
-
-# Production template (uncomment and modify for production)
-# your.domain.tld {
-#   # Enable TLS
-#   tls your-email@example.com
-#
-#   # API routes
-#   handle /api/* {
-#     reverse_proxy backend:8000
-#   }
-#
-#   # Django admin
-#   handle /admin/* {
-#     reverse_proxy backend:8000
-#   }
-#
-#   # Static and media files
-#   handle /static/* {
-#     reverse_proxy backend:8000
-#   }
-#
-#   handle /media/* {
-#     reverse_proxy backend:8000
-#   }
-#
-#   # Frontend
-#   handle {
-#     reverse_proxy frontend:5173
-#   }
-# }

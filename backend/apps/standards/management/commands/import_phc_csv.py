@@ -1,9 +1,15 @@
 import csv
-import hashlib
 from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from apps.standards.models import StandardPack, Control
+from apps.standards.phc_import_utils import (
+    normalize_whitespace,
+    normalize_key,
+    resolve_section_code,
+    is_repeated_header_row,
+    compute_normalized_checksum,
+)
 
 
 class Command(BaseCommand):
@@ -24,6 +30,13 @@ class Command(BaseCommand):
             dest='version'
         )
         parser.add_argument(
+            '--new-version',
+            type=str,
+            required=False,
+            help='Explicit new version to use if checksum differs (e.g., 1.0+rev1)',
+            dest='new_version'
+        )
+        parser.add_argument(
             '--publish',
             action='store_true',
             help='Publish the pack immediately after import'
@@ -31,7 +44,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--force-new-version',
             action='store_true',
-            help='Force import as new version even if checksum differs'
+            help='Deprecated. Use --new-version to specify the new version explicitly.'
         )
 
     def handle(self, *args, **options):
@@ -39,6 +52,7 @@ class Command(BaseCommand):
         version = options['version']
         publish = options['publish']
         force_new_version = options['force_new_version']
+        new_version = options.get('new_version')
         
         # Resolve path
         if not csv_path.startswith('/'):
@@ -52,10 +66,8 @@ class Command(BaseCommand):
         
         self.stdout.write(f"Reading CSV from: {csv_path}")
         
-        # Compute checksum
-        with open(csv_path, 'rb') as f:
-            file_content = f.read()
-            checksum = hashlib.sha256(file_content).hexdigest()
+        # Compute checksum (normalized line endings)
+        checksum = compute_normalized_checksum(csv_path)
         
         self.stdout.write(f"File checksum: {checksum}")
         
@@ -76,36 +88,53 @@ class Command(BaseCommand):
         ).first()
         
         if existing_by_version:
-            if not force_new_version:
+            if not new_version:
+                if force_new_version:
+                    self.stderr.write(
+                        self.style.WARNING(
+                            "--force-new-version is deprecated. Use --new-version to specify the new version."
+                        )
+                    )
                 raise CommandError(
                     f"Pack with version {version} already exists but with different checksum. "
-                    f"Use --force-new-version to import as {version}+rev1 or choose a different version."
+                    f"Re-run with --new-version <version> (e.g., {version}+rev1)."
                 )
-            else:
-                # Auto-increment revision
-                base_version = version
-                revision = 1
-                while StandardPack.objects.filter(
-                    authority_code='PHC',
-                    version=f"{base_version}+rev{revision}"
-                ).exists():
-                    revision += 1
-                version = f"{base_version}+rev{revision}"
-                self.stdout.write(f"Using new version: {version}")
+            if StandardPack.objects.filter(authority_code='PHC', version=new_version).exists():
+                raise CommandError(
+                    f"Pack with version {new_version} already exists. Choose a different --new-version."
+                )
+            version = new_version
+            self.stdout.write(f"Using new version: {version}")
         
         # Parse CSV
         controls_data = []
         section_counters = {}
+        seen_keys = set()
+        duplicates_removed = 0
+        non_empty_rows = 0
+        warned_sections = set()
         
-        with open(csv_path, 'r', encoding='utf-8') as f:
+        def warn_unknown(section_label):
+            if section_label in warned_sections:
+                return
+            warned_sections.add(section_label)
+            self.stderr.write(
+                self.style.WARNING(
+                    f"Unknown section label '{section_label}'. Falling back to first 3 letters for code."
+                )
+            )
+
+        with open(csv_path, 'r', encoding='utf-8-sig', newline='') as f:
             # Read first line to detect headers
             reader = csv.DictReader(f)
             
             # Normalize header names (case and whitespace insensitive)
             fieldnames = reader.fieldnames
+            if not fieldnames:
+                raise CommandError("CSV file is missing headers.")
             header_map = {}
             for field in fieldnames:
-                normalized = field.strip().lower()
+                normalized = normalize_key(field)
                 if 'section' in normalized:
                     header_map['section'] = field
                 elif 'standard' in normalized:
@@ -118,38 +147,49 @@ class Command(BaseCommand):
                     f"CSV must have columns: Section, Standard, Indicator. Found: {fieldnames}"
                 )
             
-            sort_order = 1
             for row in reader:
-                section = row[header_map['section']].strip()
-                standard = row[header_map['standard']].strip()
-                indicator = row[header_map['indicator']].strip()
+                section = normalize_whitespace(row.get(header_map['section'], ''))
+                standard = normalize_whitespace(row.get(header_map['standard'], ''))
+                indicator = normalize_whitespace(row.get(header_map['indicator'], ''))
                 
-                # Skip empty rows
-                if not section or not indicator:
+                # Skip repeated header rows or blank indicators
+                if is_repeated_header_row(section, standard, indicator):
                     continue
+                if not indicator:
+                    continue
+
+                non_empty_rows += 1
+                key = (normalize_key(section), normalize_key(standard), normalize_key(indicator))
+                if key in seen_keys:
+                    duplicates_removed += 1
+                    continue
+                seen_keys.add(key)
                 
                 # Generate control code
-                if section not in section_counters:
-                    section_counters[section] = 0
+                section_code = resolve_section_code(section, warn=warn_unknown)
+                if section_code not in section_counters:
+                    section_counters[section_code] = 0
                 
-                section_counters[section] += 1
-                # Create section abbreviation (first 3 chars uppercase, or full if short)
-                section_abbr = section[:3].upper().replace(' ', '')
-                control_code = f"PHC-{section_abbr}-{section_counters[section]:03d}"
+                section_counters[section_code] += 1
+                control_code = f"PHC-{section_code}-{section_counters[section_code]:03d}"
                 
                 controls_data.append({
                     'control_code': control_code,
                     'section': section,
                     'standard': standard,
                     'indicator': indicator,
-                    'sort_order': sort_order,
+                    'sort_order': len(controls_data) + 1,
                 })
-                sort_order += 1
         
         if not controls_data:
             raise CommandError("No valid control data found in CSV")
         
         self.stdout.write(f"Parsed {len(controls_data)} controls from CSV")
+        self.stdout.write(f"Non-empty rows (indicator present): {non_empty_rows}")
+        if duplicates_removed:
+            self.stdout.write(
+                self.style.WARNING(f"Removed {duplicates_removed} duplicate row(s) based on Section/Standard/Indicator.")
+            )
         
         # Create pack and controls in transaction
         try:
@@ -177,6 +217,17 @@ class Command(BaseCommand):
                 
                 Control.objects.bulk_create(controls)
                 self.stdout.write(f"Created {len(controls)} controls")
+
+                # Summary output
+                section_summary = {}
+                for control in controls_data:
+                    section_code = control['control_code'].split('-')[1]
+                    section_summary.setdefault(section_code, []).append(control['control_code'])
+                self.stdout.write("Counts by section code:")
+                for section_code in sorted(section_summary.keys()):
+                    count = len(section_summary[section_code])
+                    samples = ", ".join(section_summary[section_code][:3])
+                    self.stdout.write(f"  {section_code}: {count} (sample: {samples})")
                 
                 # Publish if requested
                 if publish:

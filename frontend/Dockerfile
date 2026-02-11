@@ -2,6 +2,9 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+
 # Copy package files
 COPY package*.json ./
 
