@@ -43,16 +43,17 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--force-new-version',
-            action='store_true',
-            help='Deprecated. Use --new-version to specify the new version explicitly.'
+            type=str,
+            required=False,
+            help='Force a new version string (e.g., 1.0+codes1) to re-import despite existing pack.',
+            dest='force_new_version'
         )
 
     def handle(self, *args, **options):
         csv_path = options['path']
         version = options['version']
         publish = options['publish']
-        force_new_version = options['force_new_version']
-        new_version = options.get('new_version')
+        force_new_version = options.get('force_new_version')
         
         # Resolve path
         if not csv_path.startswith('/'):
@@ -74,12 +75,14 @@ class Command(BaseCommand):
         # Check for existing pack with same checksum
         existing_by_checksum = StandardPack.objects.filter(checksum=checksum).first()
         if existing_by_checksum:
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"Pack already imported: {existing_by_checksum} (checksum match). No action taken."
+            if not force_new_version:
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"Pack already imported: {existing_by_checksum} (checksum match). No action taken."
+                    )
                 )
-            )
-            return
+                return
+            self.stdout.write(f"Checksum match, but forcing new version: {force_new_version}")
         
         # Check for existing pack with same authority+version
         existing_by_version = StandardPack.objects.filter(
@@ -87,23 +90,19 @@ class Command(BaseCommand):
             version=version
         ).first()
         
-        if existing_by_version:
-            if not new_version:
-                if force_new_version:
-                    self.stderr.write(
-                        self.style.WARNING(
-                            "--force-new-version is deprecated. Use --new-version to specify the new version."
-                        )
-                    )
+        if existing_by_version or existing_by_checksum:
+            if not force_new_version:
                 raise CommandError(
-                    f"Pack with version {version} already exists but with different checksum. "
-                    f"Re-run with --new-version <version> (e.g., {version}+rev1)."
+                    f"Pack with version {version} already exists. "
+                    f"Use --force-new-version <version> to re-import as a new version."
                 )
-            if StandardPack.objects.filter(authority_code='PHC', version=new_version).exists():
-                raise CommandError(
-                    f"Pack with version {new_version} already exists. Choose a different --new-version."
+            
+            # Check if the forced version already exists
+            if StandardPack.objects.filter(authority_code='PHC', version=force_new_version).exists():
+                 raise CommandError(
+                    f"Pack with version {force_new_version} already exists. Choose a different version."
                 )
-            version = new_version
+            version = force_new_version
             self.stdout.write(f"Using new version: {version}")
         
         # Parse CSV
@@ -112,17 +111,6 @@ class Command(BaseCommand):
         seen_keys = set()
         duplicates_removed = 0
         non_empty_rows = 0
-        warned_sections = set()
-        
-        def warn_unknown(section_label):
-            if section_label in warned_sections:
-                return
-            warned_sections.add(section_label)
-            self.stderr.write(
-                self.style.WARNING(
-                    f"Unknown section label '{section_label}'. Falling back to first 3 letters for code."
-                )
-            )
 
         with open(csv_path, 'r', encoding='utf-8-sig', newline='') as f:
             # Read first line to detect headers
@@ -166,7 +154,7 @@ class Command(BaseCommand):
                 seen_keys.add(key)
                 
                 # Generate control code
-                section_code = resolve_section_code(section, warn=warn_unknown)
+                section_code = resolve_section_code(section)
                 if section_code not in section_counters:
                     section_counters[section_code] = 0
                 
