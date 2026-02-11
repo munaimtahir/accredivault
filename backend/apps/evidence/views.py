@@ -7,6 +7,7 @@ from .models import EvidenceItem, EvidenceFile, ControlEvidenceLink
 from .serializers import EvidenceItemSerializer, EvidenceFileSerializer, ControlEvidenceLinkSerializer
 from .storage import get_s3_client, build_object_key, compute_sha256
 from .utils import create_audit_event
+from apps.compliance.engine import recompute_and_persist
 from apps.standards.models import Control
 from apps.standards.serializers import ControlSerializer
 
@@ -131,6 +132,7 @@ class ControlEvidenceLinkView(APIView):
                 entity_id=link.id,
                 after_json=response_data,
             )
+            recompute_and_persist(control)
         return Response(response_data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
@@ -148,6 +150,8 @@ class ControlEvidenceUnlinkView(APIView):
             entity_id=link_id,
             before_json=before_data,
         )
+        control = link.control
+        recompute_and_persist(control)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

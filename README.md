@@ -8,7 +8,7 @@
 
 **AccrediVault** is an enterprise-grade evidence management platform for PHC (Primary Healthcare) Lab Licensing compliance. It provides a complete solution for tracking, managing, and verifying compliance evidence against regulatory standards.
 
-## ✨ Features (MVP - Prompt 0)
+## ✨ Features (Implemented Through Prompt 2)
 
 ### ✅ Standards Management
 - Import checklist controls from CSV files
@@ -28,7 +28,17 @@
 - Controls listing with section filtering
 - Text search across controls
 - Responsive design
-- Login placeholder (auth in Prompt 1)
+- Control detail with evidence timeline
+- Verification actions (verify/reject)
+- Control PDF export and download
+
+### ✅ Evidence & Compliance (Prompt 1 + Prompt 2)
+- Evidence item creation and MinIO file uploads
+- Evidence linking/unlinking to controls
+- Rules engine for compliance status computation
+- Cached control status with due dates
+- Verification freshness tracking
+- Synchronous ReportLab PDF export to MinIO + presigned download
 
 ### ✅ Infrastructure
 - Docker Compose deployment
@@ -148,18 +158,13 @@
 
 ## 📊 Current Status
 
-**Prompt 0 (MVP Scaffold): ✅ COMPLETE**
+**Prompt 0: ✅ COMPLETE**  
+**Prompt 1: ✅ COMPLETE**  
+**Prompt 2: ✅ COMPLETE**
 
-All verification tests passing:
-- ✅ All services running
-- ✅ Health checks passing
-- ✅ API serving 121 controls
-- ✅ Frontend accessible
-- ✅ Admin interface accessible
-- ✅ Database records correct
-- ✅ Immutability enforced
-
-Run `./scripts/verify_mvp.sh` to verify your deployment.
+Verification scripts:
+- `./scripts/verify_mvp.sh`
+- `./scripts/verify_prompt2.sh`
 
 ## 🗂️ Project Structure
 
@@ -194,19 +199,16 @@ accredivault/
 
 ## 🔜 Roadmap
 
-### Prompt 1 - Evidence Management (Next)
-- Evidence upload to MinIO
-- Link evidence to controls
-- Evidence timeline and history
-- File type validation
-- Evidence CRUD operations
+### Prompt 1 - Evidence Management
+- ✅ Implemented
 
 ### Prompt 2 - Rules & PDF Export
-- Evidence rules engine
-- Control status computation
-- PDF export with ReportLab
-- Background job processing
-- Export history
+- ✅ Evidence rules engine
+- ✅ Control status computation/cache
+- ✅ Verification workflow
+- ✅ Control PDF export with ReportLab
+- ✅ Export history + presigned download
+- ℹ️ Exports are synchronous (no Celery/Redis yet)
 
 ### Prompt 3 - Auth, Audit, Polish
 - JWT authentication

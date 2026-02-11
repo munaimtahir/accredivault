@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api, type Control, type ControlTimeline } from '../api';
+import { api, type Control, type ControlStatus, type ControlTimeline, type ExportJob } from '../api';
 import './Controls.css';
 
 const Controls: React.FC = () => {
@@ -14,6 +14,20 @@ const Controls: React.FC = () => {
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState<string | null>(null);
 
+  const [controlStatus, setControlStatus] = useState<ControlStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  const [exports, setExports] = useState<ExportJob[]>([]);
+  const [exportsLoading, setExportsLoading] = useState(false);
+  const [exportsError, setExportsError] = useState<string | null>(null);
+  const [lastDownloadUrl, setLastDownloadUrl] = useState<string | null>(null);
+
+  const [verificationRemarks, setVerificationRemarks] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
   const [evidenceTitle, setEvidenceTitle] = useState('');
   const [evidenceCategory, setEvidenceCategory] = useState('');
   const [evidenceDate, setEvidenceDate] = useState('');
@@ -27,18 +41,31 @@ const Controls: React.FC = () => {
     loadControls();
   }, []);
 
-  const loadControls = async (section?: string, q?: string) => {
+  const getStatusBadge = (status: string) => {
+    const statusClasses: Record<string, string> = {
+      NOT_STARTED: 'status-not-started',
+      IN_PROGRESS: 'status-in-progress',
+      READY: 'status-ready',
+      VERIFIED: 'status-verified',
+      OVERDUE: 'status-overdue',
+    };
+    return <span className={`status-badge ${statusClasses[status] || ''}`}>{status.replace('_', ' ')}</span>;
+  };
+
+  const loadControls = async (section?: string, q?: string): Promise<Control[]> => {
     try {
       setLoading(true);
       setError(null);
       const data = await api.getControls({ section, q });
       setControls(data);
 
-      // Extract unique sections
-      const uniqueSections = Array.from(new Set(data.map(c => c.section))).sort();
+      const uniqueSections = Array.from(new Set(data.map((c) => c.section))).sort();
       setSections(uniqueSections);
+
+      return data;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load controls');
+      return [];
     } finally {
       setLoading(false);
     }
@@ -57,6 +84,49 @@ const Controls: React.FC = () => {
     }
   };
 
+  const loadControlStatus = async (controlId: number) => {
+    try {
+      setStatusLoading(true);
+      setStatusError(null);
+      const data = await api.getControlStatus(controlId);
+      setControlStatus(data);
+    } catch (err) {
+      setStatusError(err instanceof Error ? err.message : 'Failed to load control status');
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  const loadControlExports = async (controlId: number) => {
+    try {
+      setExportsLoading(true);
+      setExportsError(null);
+      const data = await api.listControlExports(controlId);
+      setExports(data.slice(0, 5));
+    } catch (err) {
+      setExportsError(err instanceof Error ? err.message : 'Failed to load exports');
+    } finally {
+      setExportsLoading(false);
+    }
+  };
+
+  const refreshSelectedControlRow = async (controlId: number) => {
+    const data = await loadControls(sectionFilter || undefined, searchQuery || undefined);
+    const match = data.find((c) => c.id === controlId);
+    if (match) {
+      setSelectedControl(match);
+    }
+  };
+
+  const refreshSelectedControlData = async (controlId: number) => {
+    await Promise.all([
+      loadTimeline(controlId),
+      loadControlStatus(controlId),
+      loadControlExports(controlId),
+      refreshSelectedControlRow(controlId),
+    ]);
+  };
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     loadControls(sectionFilter || undefined, searchQuery || undefined);
@@ -70,7 +140,10 @@ const Controls: React.FC = () => {
 
   const handleSelectControl = (control: Control) => {
     setSelectedControl(control);
-    loadTimeline(control.id);
+    setActionError(null);
+    setActionSuccess(null);
+    setLastDownloadUrl(null);
+    refreshSelectedControlData(control.id);
   };
 
   const handleCreateEvidence = async (e: React.FormEvent) => {
@@ -106,11 +179,54 @@ const Controls: React.FC = () => {
       setEvidenceFiles([]);
       setEvidenceSubmitSuccess('Evidence created and linked.');
 
-      await loadTimeline(selectedControl.id);
+      await refreshSelectedControlData(selectedControl.id);
     } catch (err) {
       setEvidenceSubmitError(err instanceof Error ? err.message : 'Failed to create evidence');
     } finally {
       setEvidenceSubmitting(false);
+    }
+  };
+
+  const handleVerify = async (kind: 'verify' | 'reject') => {
+    if (!selectedControl) return;
+
+    try {
+      setActionBusy(true);
+      setActionError(null);
+      setActionSuccess(null);
+
+      if (kind === 'verify') {
+        await api.verifyControl(selectedControl.id, verificationRemarks || undefined);
+        setActionSuccess('Control marked as VERIFIED.');
+      } else {
+        await api.rejectControl(selectedControl.id, verificationRemarks || undefined);
+        setActionSuccess('Control marked as REJECTED.');
+      }
+
+      await refreshSelectedControlData(selectedControl.id);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Verification action failed');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleCreateExport = async () => {
+    if (!selectedControl) return;
+
+    try {
+      setActionBusy(true);
+      setActionError(null);
+      setActionSuccess(null);
+
+      const response = await api.createControlExport(selectedControl.id);
+      setLastDownloadUrl(response.download.url);
+      setActionSuccess('Control PDF export generated successfully.');
+      await refreshSelectedControlData(selectedControl.id);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setActionBusy(false);
     }
   };
 
@@ -123,20 +239,16 @@ const Controls: React.FC = () => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusClasses: Record<string, string> = {
-      'NOT_STARTED': 'status-not-started',
-      'IN_PROGRESS': 'status-in-progress',
-      'READY': 'status-ready',
-      'VERIFIED': 'status-verified',
-      'OVERDUE': 'status-overdue',
-    };
-    return (
-      <span className={`status-badge ${statusClasses[status] || ''}`}>
-        {status.replace('_', ' ')}
-      </span>
-    );
+  const handleDownloadExport = async (jobId: string) => {
+    try {
+      const data = await api.downloadExport(jobId);
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setExportsError(err instanceof Error ? err.message : 'Failed to download export');
+    }
   };
+
+  const statusLabel = controlStatus?.computed_status || selectedControl?.status || 'NOT_STARTED';
 
   return (
     <div className="controls-container">
@@ -150,13 +262,12 @@ const Controls: React.FC = () => {
           <div className="filter-row">
             <div className="filter-group">
               <label>Section</label>
-              <select
-                value={sectionFilter}
-                onChange={(e) => setSectionFilter(e.target.value)}
-              >
+              <select value={sectionFilter} onChange={(e) => setSectionFilter(e.target.value)}>
                 <option value="">All Sections</option>
-                {sections.map(section => (
-                  <option key={section} value={section}>{section}</option>
+                {sections.map((section) => (
+                  <option key={section} value={section}>
+                    {section}
+                  </option>
                 ))}
               </select>
             </div>
@@ -170,7 +281,9 @@ const Controls: React.FC = () => {
               />
             </div>
             <div className="filter-actions">
-              <button type="submit" className="btn-primary">Search</button>
+              <button type="submit" className="btn-primary">
+                Search
+              </button>
               <button type="button" onClick={handleReset} className="btn-secondary">
                 Reset
               </button>
@@ -198,7 +311,7 @@ const Controls: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {controls.map(control => (
+                {controls.map((control) => (
                   <tr
                     key={control.id}
                     className={selectedControl?.id === control.id ? 'selected-row' : ''}
@@ -230,10 +343,86 @@ const Controls: React.FC = () => {
                 setSelectedControl(null);
                 setTimeline(null);
                 setTimelineError(null);
+                setControlStatus(null);
+                setExports([]);
+                setActionError(null);
+                setActionSuccess(null);
+                setLastDownloadUrl(null);
               }}
             >
               Close
             </button>
+          </div>
+
+          <div className="control-status-row">
+            <div>
+              <strong>Status:</strong> {getStatusBadge(statusLabel)}
+            </div>
+            <div>
+              <strong>Last evidence:</strong> {controlStatus?.last_evidence_date || selectedControl.last_evidence_date || '-'}
+            </div>
+            <div>
+              <strong>Next due:</strong> {controlStatus?.next_due_date || selectedControl.next_due_date || '-'}
+            </div>
+          </div>
+          {statusLoading && <div className="loading">Refreshing status...</div>}
+          {statusError && <div className="error-banner">{statusError}</div>}
+
+          <div className="action-panel">
+            <div className="form-group">
+              <label>Verification Remarks (optional)</label>
+              <textarea
+                value={verificationRemarks}
+                onChange={(e) => setVerificationRemarks(e.target.value)}
+                placeholder="Remarks for verification or rejection"
+              />
+            </div>
+            <div className="action-buttons">
+              <button type="button" className="btn-primary" disabled={actionBusy} onClick={() => handleVerify('verify')}>
+                Mark Verified
+              </button>
+              <button type="button" className="btn-secondary" disabled={actionBusy} onClick={() => handleVerify('reject')}>
+                Reject
+              </button>
+              <button type="button" className="btn-primary" disabled={actionBusy} onClick={handleCreateExport}>
+                Generate Control PDF
+              </button>
+              {lastDownloadUrl && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => window.open(lastDownloadUrl, '_blank', 'noopener,noreferrer')}
+                >
+                  Download PDF
+                </button>
+              )}
+            </div>
+            {actionError && <div className="error-banner">{actionError}</div>}
+            {actionSuccess && <div className="success-banner">{actionSuccess}</div>}
+          </div>
+
+          <div className="exports-panel">
+            <h3>Recent Exports</h3>
+            {exportsLoading && <div className="loading">Loading exports...</div>}
+            {exportsError && <div className="error-banner">{exportsError}</div>}
+            {!exportsLoading && !exportsError && (
+              <ul className="export-list">
+                {exports.length > 0 ? (
+                  exports.map((job) => (
+                    <li key={job.id}>
+                      <span>
+                        {new Date(job.created_at).toLocaleString()} - {job.status}
+                      </span>
+                      <button type="button" className="btn-secondary btn-small" onClick={() => handleDownloadExport(job.id)}>
+                        Download
+                      </button>
+                    </li>
+                  ))
+                ) : (
+                  <li className="muted">No exports yet.</li>
+                )}
+              </ul>
+            )}
           </div>
 
           <div className="evidence-grid">
@@ -251,10 +440,7 @@ const Controls: React.FC = () => {
                 </div>
                 <div className="form-group">
                   <label>Category</label>
-                  <select
-                    value={evidenceCategory}
-                    onChange={(e) => setEvidenceCategory(e.target.value)}
-                  >
+                  <select value={evidenceCategory} onChange={(e) => setEvidenceCategory(e.target.value)}>
                     <option value="">Select Category</option>
                     <option value="policy">Policy</option>
                     <option value="procedure">Procedure</option>
@@ -266,11 +452,7 @@ const Controls: React.FC = () => {
                 </div>
                 <div className="form-group">
                   <label>Event Date</label>
-                  <input
-                    type="date"
-                    value={evidenceDate}
-                    onChange={(e) => setEvidenceDate(e.target.value)}
-                  />
+                  <input type="date" value={evidenceDate} onChange={(e) => setEvidenceDate(e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>Notes</label>
@@ -282,18 +464,9 @@ const Controls: React.FC = () => {
                 </div>
                 <div className="form-group">
                   <label>Files</label>
-                  <input
-                    type="file"
-                    multiple
-                    onChange={(e) => setEvidenceFiles(Array.from(e.target.files || []))}
-                  />
+                  <input type="file" multiple onChange={(e) => setEvidenceFiles(Array.from(e.target.files || []))} />
                 </div>
-                <button 
-                  type="submit" 
-                  className="btn-primary" 
-                  disabled={evidenceSubmitting}
-                  style={{ width: '100%', marginTop: '1rem' }}
-                >
+                <button type="submit" className="btn-primary" disabled={evidenceSubmitting} style={{ width: '100%', marginTop: '1rem' }}>
                   {evidenceSubmitting ? 'Creating...' : 'Create Evidence'}
                 </button>
                 {evidenceSubmitError && <div className="error-banner">{evidenceSubmitError}</div>}
@@ -310,7 +483,7 @@ const Controls: React.FC = () => {
                 <>
                   {timeline?.evidence_items?.length ? (
                     <div className="evidence-cards">
-                      {timeline.evidence_items.map(link => (
+                      {timeline.evidence_items.map((link) => (
                         <div key={link.id} className="evidence-card animate-fade-in">
                           <div className="evidence-card-header">
                             <div>
@@ -323,29 +496,23 @@ const Controls: React.FC = () => {
                               </div>
                             </div>
                           </div>
-                          {link.evidence_item.notes && (
-                            <p className="evidence-notes">{link.evidence_item.notes}</p>
-                          )}
+                          {link.evidence_item.notes && <p className="evidence-notes">{link.evidence_item.notes}</p>}
                           <div className="evidence-files">
                             {link.evidence_item.files?.length ? (
                               <ul>
-                                {link.evidence_item.files.map(file => (
+                                {link.evidence_item.files.map((file) => (
                                   <li key={file.id}>
-                                    <span style={{ fontSize: '0.875rem', color: 'var(--text)' }}>
-                                      📄 {file.filename}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      className="btn-secondary btn-small"
-                                      onClick={() => handleDownloadFile(file.id)}
-                                    >
+                                    <span style={{ fontSize: '0.875rem', color: 'var(--text)' }}>{file.filename}</span>
+                                    <button type="button" className="btn-secondary btn-small" onClick={() => handleDownloadFile(file.id)}>
                                       Download
                                     </button>
                                   </li>
                                 ))}
                               </ul>
                             ) : (
-                              <div className="muted" style={{ fontSize: '0.875rem' }}>No files uploaded.</div>
+                              <div className="muted" style={{ fontSize: '0.875rem' }}>
+                                No files uploaded.
+                              </div>
                             )}
                           </div>
                         </div>
@@ -353,7 +520,6 @@ const Controls: React.FC = () => {
                     </div>
                   ) : (
                     <div className="muted" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
-                      <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📂</div>
                       <p>No evidence linked yet.</p>
                       <p style={{ fontSize: '0.875rem' }}>Upload your first piece of evidence using the form.</p>
                     </div>

@@ -15,7 +15,7 @@ class ControlViewSet(viewsets.ReadOnlyModelViewSet):
     API endpoint for listing and retrieving controls.
     Supports filtering by section and text search.
     """
-    queryset = Control.objects.select_related('standard_pack').filter(active=True)
+    queryset = Control.objects.select_related('standard_pack', 'status_cache').filter(active=True)
     serializer_class = ControlSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ['control_code', 'section', 'standard', 'indicator']

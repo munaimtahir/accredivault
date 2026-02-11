@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'apps.users',
     'apps.audit',
     'apps.evidence',
+    'apps.compliance',
 ]
 
 MIDDLEWARE = [

@@ -9,6 +9,8 @@ export interface Control {
   sort_order: number;
   active: boolean;
   status: string;
+  last_evidence_date?: string | null;
+  next_due_date?: string | null;
 }
 
 export interface EvidenceFile {
@@ -45,6 +47,47 @@ export interface ControlTimeline {
   evidence_items: EvidenceLink[];
 }
 
+export interface ControlStatus {
+  control_id: number;
+  computed_status: string;
+  last_evidence_date: string | null;
+  next_due_date: string | null;
+  computed_at: string;
+  details_json: Record<string, unknown>;
+}
+
+export interface VerificationResponse {
+  verification: {
+    id: string;
+    control: number;
+    status: 'VERIFIED' | 'REJECTED';
+    remarks?: string | null;
+    verified_by?: number | null;
+    verified_at: string;
+    evidence_snapshot_at?: string | null;
+  };
+  status_cache: ControlStatus;
+}
+
+export interface ExportJob {
+  id: string;
+  job_type: 'CONTROL_PDF' | 'SECTION_PACK' | 'FULL_PACK';
+  status: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  standard_pack: number;
+  control?: number | null;
+  section_code?: string | null;
+  filters_json: Record<string, unknown>;
+  created_by?: number | null;
+  created_at: string;
+  completed_at?: string | null;
+  bucket: string;
+  object_key: string;
+  filename: string;
+  size_bytes?: number | null;
+  sha256?: string | null;
+  error_text?: string | null;
+}
+
 export const api = {
   async getControls(params?: { section?: string; q?: string }): Promise<Control[]> {
     const queryParams = new URLSearchParams();
@@ -65,6 +108,66 @@ export const api = {
 
   async getControlTimeline(controlId: number): Promise<ControlTimeline> {
     const response = await fetch(`${API_BASE_URL}/controls/${controlId}/timeline`);
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async getControlStatus(controlId: number): Promise<ControlStatus> {
+    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/status`);
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async verifyControl(controlId: number, remarks?: string): Promise<VerificationResponse> {
+    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ remarks }),
+    });
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async rejectControl(controlId: number, remarks?: string): Promise<VerificationResponse> {
+    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ remarks }),
+    });
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async createControlExport(controlId: number): Promise<{ job: ExportJob; download: { url: string; expires_in: number } }> {
+    const response = await fetch(`${API_BASE_URL}/exports/control/${controlId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async downloadExport(jobId: string): Promise<{ url: string; expires_in: number }> {
+    const response = await fetch(`${API_BASE_URL}/exports/${jobId}/download`);
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async listControlExports(controlId: number): Promise<ExportJob[]> {
+    const response = await fetch(`${API_BASE_URL}/exports/control/${controlId}`);
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
     }
