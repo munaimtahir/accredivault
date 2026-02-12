@@ -118,10 +118,14 @@ services:
 
 networks:
   internal:
-    driver: bridge
+    name: prod_accredivault_network
 
 volumes:
   PROD_accredivault_pgdata:
+    name: PROD_accredivault_pgdata
   PROD_accredivault_minio_data:
+    name: PROD_accredivault_minio_data
   PROD_accredivault_caddy_data:
+    name: PROD_accredivault_caddy_data
   PROD_accredivault_caddy_config:
+    name: PROD_accredivault_caddy_config
