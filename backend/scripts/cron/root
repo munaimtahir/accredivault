@@ -1,0 +1,1 @@
+30 2 * * * /app/scripts/run_scheduled_compliance.sh >> /app/logs/cron.log 2>&1
