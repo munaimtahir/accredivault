@@ -1,23 +1,30 @@
 import { useState } from 'react'
 import Login from './components/Login'
 import Controls from './components/Controls'
+import Dashboard from './components/Dashboard'
 import './App.css'
 
 function App() {
-  const [currentPage, setCurrentPage] = useState<'login' | 'controls'>('controls');
+  const [currentPage, setCurrentPage] = useState<'login' | 'controls' | 'dashboard'>('dashboard');
 
   return (
     <>
       <nav className="app-nav">
         <div className="nav-brand">
-          <span style={{ fontSize: '1.5rem' }}>🛡️</span> AccrediVault
+          AccrediVault
         </div>
         <div className="nav-links">
+          <button
+            className={currentPage === 'dashboard' ? 'active' : ''}
+            onClick={() => setCurrentPage('dashboard')}
+          >
+            Dashboard
+          </button>
           <button
             className={currentPage === 'controls' ? 'active' : ''}
             onClick={() => setCurrentPage('controls')}
           >
-            Dashboard
+            Controls
           </button>
           <button
             className={currentPage === 'login' ? 'active' : ''}
@@ -30,6 +37,7 @@ function App() {
 
       <main className="animate-fade-in">
         {currentPage === 'login' && <Login />}
+        {currentPage === 'dashboard' && <Dashboard />}
         {currentPage === 'controls' && <Controls />}
       </main>
     </>

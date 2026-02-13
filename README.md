@@ -8,7 +8,7 @@
 
 **AccrediVault** is an enterprise-grade evidence management platform for PHC (Primary Healthcare) Lab Licensing compliance. It provides a complete solution for tracking, managing, and verifying compliance evidence against regulatory standards.
 
-## ✨ Features (Implemented Through Prompt 2)
+## ✨ Features (Implemented Through Phase 3)
 
 ### ✅ Standards Management
 - Import checklist controls from CSV files
@@ -39,6 +39,14 @@
 - Cached control status with due dates
 - Verification freshness tracking
 - Synchronous ReportLab PDF export to MinIO + presigned download
+
+### ✅ Operational Automation + Analytics (Phase 3)
+- Scheduled compliance recompute command with overdue/near-due filtering and dry-run mode
+- Cron-driven daily recompute job (`backend/scripts/run_scheduled_compliance.sh`)
+- Dashboard summary API (`GET /api/v1/dashboard/summary`) with totals, section breakdown, and upcoming due controls
+- Active alerts API (`GET /api/v1/alerts`) with OVERDUE / NEAR_DUE lifecycle
+- Section and full-pack PDF export endpoints
+- Control-level structured notes (`ControlNote`) with CRUD APIs
 
 ### ✅ Infrastructure
 - Docker Compose deployment
@@ -160,7 +168,8 @@
 
 **Prompt 0: ✅ COMPLETE**  
 **Prompt 1: ✅ COMPLETE**  
-**Prompt 2: ✅ COMPLETE**
+**Prompt 2: ✅ COMPLETE**  
+**Phase 3: ✅ COMPLETE**
 
 Verification scripts:
 - `./scripts/verify_mvp.sh`

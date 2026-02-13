@@ -247,3 +247,43 @@
 ### Known Issues
 - None blocking - MVP is fully functional
 - Self-signed cert for localhost (expected for dev)
+
+---
+
+## Phase 3 (Scheduled Compliance + Dashboard + Packs) - ✅ COMPLETED
+
+### Backend
+- [x] Extended `recompute_control_statuses` command with:
+  - [x] `--pack-version`
+  - [x] `--latest`
+  - [x] `--only-overdue`
+  - [x] `--only-near-due`
+  - [x] `--dry-run`
+  - [x] `--ignore-overdue`
+  - [x] status summary output including `NEAR_DUE`
+- [x] Added cron-style scheduled compliance job script
+- [x] Added dashboard summary endpoint (`GET /api/v1/dashboard/summary`)
+- [x] Added alerts endpoint (`GET /api/v1/alerts`)
+- [x] Added `ControlNote` model + CRUD APIs
+- [x] Added `ComplianceAlert` model + auto create/clear logic during recompute
+
+### Export
+- [x] Refactored PDF generation to reusable ReportLab export service
+- [x] Added section pack export (`POST /api/v1/exports/section/<section_code>`)
+- [x] Added full pack export (`POST /api/v1/exports/full`)
+- [x] Added cover page, section summary page, per-control pages, footer and page numbering
+
+### Frontend
+- [x] Added Dashboard page with summary counters
+- [x] Added section breakdown with section export buttons
+- [x] Added full pack export button
+- [x] Added upcoming due + active alerts panels
+- [x] Added control-level notes panel with add-note modal and resolve/delete actions
+
+### Tests
+- [x] Scheduled recompute overdue exit behavior
+- [x] Dashboard summary aggregate counts
+- [x] Section export job creation
+- [x] Full export job creation
+- [x] ControlNote CRUD
+- [x] ComplianceAlert create/clear lifecycle

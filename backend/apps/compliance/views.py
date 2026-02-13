@@ -1,22 +1,23 @@
 import hashlib
 import io
+from datetime import timedelta
 
 from django.conf import settings
+from django.db.models import Max
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from reportlab.pdfgen import canvas
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.compliance.engine import compute_control_status, fetch_linked_evidence, recompute_and_persist
-from apps.compliance.models import ControlVerification, ExportJob
+from apps.compliance.engine import get_section_code_from_control, recompute_and_persist
+from apps.compliance.export_service import generate_control_pdf_bytes, generate_controls_pdf_bytes
+from apps.compliance.models import ComplianceAlert, ControlNote, ControlStatusCache, ControlVerification, ExportJob
+from apps.compliance.permissions import IsAdminManagerAuditor, IsAdminOrManager
 from apps.compliance.serializers import (
+    ComplianceAlertSerializer,
+    ControlNoteSerializer,
     ControlStatusCacheSerializer,
     ControlVerificationSerializer,
     ExportJobSerializer,
@@ -24,36 +25,7 @@ from apps.compliance.serializers import (
 from apps.evidence.models import ControlEvidenceLink
 from apps.evidence.storage import get_s3_client
 from apps.evidence.utils import create_audit_event
-from apps.standards.models import Control
-
-
-class NumberedCanvas(canvas.Canvas):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._saved_page_states = []
-
-    def showPage(self):
-        self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()
-
-    def save(self):
-        page_count = len(self._saved_page_states)
-        for state in self._saved_page_states:
-            self.__dict__.update(state)
-            self.draw_page_number(page_count)
-            super().showPage()
-        super().save()
-
-    def draw_page_number(self, page_count):
-        self.setFont('Helvetica', 9)
-        self.setFillColor(colors.grey)
-        self.drawRightString(200 * mm, 10 * mm, f"Page {self._pageNumber} of {page_count}")
-
-
-def _safe_text(value):
-    if value is None:
-        return '-'
-    return str(value)
+from apps.standards.models import Control, StandardPack
 
 
 def _ensure_bucket_exists(s3_client, bucket_name: str):
@@ -63,121 +35,52 @@ def _ensure_bucket_exists(s3_client, bucket_name: str):
         s3_client.create_bucket(Bucket=bucket_name)
 
 
-def _generate_control_pdf_bytes(control: Control) -> bytes:
-    styles = getSampleStyleSheet()
-    normal = styles['Normal']
-    heading = styles['Heading2']
+def _export_download_payload(s3_client, bucket: str, object_key: str):
+    expires_in = 600
+    download_url = s3_client.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': bucket, 'Key': object_key},
+        ExpiresIn=expires_in,
+    )
+    return {'url': download_url, 'expires_in': expires_in}
 
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=A4,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=18 * mm,
-        bottomMargin=18 * mm,
+
+def _latest_pack_or_404():
+    pack = StandardPack.objects.order_by('-created_at').first()
+    if pack is None:
+        return None
+    return pack
+
+
+def _run_export_job(request, job: ExportJob, object_key: str, pdf_bytes: bytes):
+    s3_client = get_s3_client()
+    _ensure_bucket_exists(s3_client, job.bucket)
+    s3_client.upload_fileobj(
+        io.BytesIO(pdf_bytes),
+        job.bucket,
+        object_key,
+        ExtraArgs={'ContentType': 'application/pdf'},
     )
 
-    status_data = compute_control_status(control)
-    evidence_items = list(fetch_linked_evidence(control))
+    job.status = ExportJob.STATUS_COMPLETED
+    job.completed_at = timezone.now()
+    job.object_key = object_key
+    job.sha256 = hashlib.sha256(pdf_bytes).hexdigest()
+    job.size_bytes = len(pdf_bytes)
+    job.save(update_fields=['status', 'completed_at', 'object_key', 'sha256', 'size_bytes'])
 
-    story = []
-    story.append(Paragraph('AccrediVault / PHC Licensing Evidence Pack', styles['Title']))
-    story.append(Spacer(1, 8))
+    create_audit_event(
+        request=request,
+        action='EXPORT_CREATED',
+        entity_type='ExportJob',
+        entity_id=job.id,
+        after_json=ExportJobSerializer(job).data,
+    )
 
-    pack = control.standard_pack
-    generated_at = timezone.now().strftime('%Y-%m-%d %H:%M:%S UTC')
-    pack_table = Table([
-        ['Authority', _safe_text(pack.authority_code)],
-        ['Pack Version', _safe_text(pack.version)],
-        ['Generated At', generated_at],
-    ], colWidths=[45 * mm, 120 * mm])
-    pack_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-    ]))
-    story.append(pack_table)
-    story.append(Spacer(1, 10))
-
-    story.append(Paragraph('Control', heading))
-    control_table = Table([
-        ['Control Code', _safe_text(control.control_code)],
-        ['Section', _safe_text(control.section)],
-        ['Standard', _safe_text(control.standard)],
-        ['Indicator', _safe_text(control.indicator)],
-    ], colWidths=[45 * mm, 120 * mm])
-    control_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-    ]))
-    story.append(control_table)
-    story.append(Spacer(1, 10))
-
-    story.append(Paragraph('Current Status', heading))
-    status_table = Table([
-        ['Computed Status', status_data['computed_status']],
-        ['Last Evidence Date', _safe_text(status_data['last_evidence_date'])],
-        ['Next Due Date', _safe_text(status_data['next_due_date'])],
-    ], colWidths=[45 * mm, 120 * mm])
-    status_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-    ]))
-    story.append(status_table)
-    story.append(Spacer(1, 10))
-
-    story.append(Paragraph('Evidence Items', heading))
-    if not evidence_items:
-        story.append(Paragraph('No evidence linked.', normal))
-    else:
-        for idx, ev in enumerate(evidence_items, start=1):
-            story.append(Paragraph(f"{idx}. {_safe_text(ev.title)}", styles['Heading4']))
-            ev_table = Table([
-                ['Event Date', _safe_text(ev.event_date), 'Category', _safe_text(ev.category)],
-                ['Subtype', _safe_text(ev.subtype), 'Valid From', _safe_text(ev.valid_from)],
-                ['Valid Until', _safe_text(ev.valid_until), 'Notes', _safe_text(ev.notes)],
-            ], colWidths=[30 * mm, 60 * mm, 30 * mm, 45 * mm])
-            ev_table.setStyle(TableStyle([
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-                ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke),
-                ('BACKGROUND', (2, 0), (2, -1), colors.whitesmoke),
-                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 0), (-1, -1), 8.5),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ]))
-            story.append(ev_table)
-
-            if ev.files.exists():
-                file_rows = [['Filename', 'SHA256', 'Uploaded At']]
-                for evidence_file in ev.files.all().order_by('-uploaded_at'):
-                    uploaded = evidence_file.uploaded_at.strftime('%Y-%m-%d %H:%M:%S')
-                    file_rows.append([evidence_file.filename, evidence_file.sha256, uploaded])
-                files_table = Table(file_rows, colWidths=[52 * mm, 73 * mm, 40 * mm])
-                files_table.setStyle(TableStyle([
-                    ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ECEFF4')),
-                    ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-                    ('FONTSIZE', (0, 0), (-1, -1), 8),
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ]))
-                story.append(Spacer(1, 4))
-                story.append(files_table)
-            else:
-                story.append(Paragraph('Attached files: none', normal))
-
-            story.append(Spacer(1, 8))
-
-    doc.build(story, canvasmaker=NumberedCanvas)
-    return buf.getvalue()
+    return {
+        'job': ExportJobSerializer(job).data,
+        'download': _export_download_payload(s3_client, job.bucket, object_key),
+    }
 
 
 class ControlStatusView(APIView):
@@ -244,9 +147,7 @@ class ControlExportView(APIView):
         control = get_object_or_404(Control, pk=control_id)
         pack = control.standard_pack
         bucket = getattr(settings, 'MINIO_BUCKET_EXPORTS', 'exports')
-
         placeholder_key = f"exports/pending/{timezone.now().strftime('%Y%m%d%H%M%S')}-{control.id}.pdf"
-        filename = f"{control.control_code}-evidence-pack.pdf"
 
         job = ExportJob.objects.create(
             job_type=ExportJob.JOB_CONTROL_PDF,
@@ -257,53 +158,18 @@ class ControlExportView(APIView):
             created_by=(request.user if request.user.is_authenticated else None),
             bucket=bucket,
             object_key=placeholder_key,
-            filename=filename,
+            filename=f'{control.control_code}-evidence-pack.pdf',
         )
-
-        object_key = f"exports/{pack.authority_code}/{pack.version}/controls/{control.control_code}/{job.id}.pdf"
+        object_key = f'exports/{pack.authority_code}/{pack.version}/controls/{control.control_code}/{job.id}.pdf'
 
         try:
-            pdf_bytes = _generate_control_pdf_bytes(control)
-            sha256 = hashlib.sha256(pdf_bytes).hexdigest()
-            size_bytes = len(pdf_bytes)
-
-            s3_client = get_s3_client()
-            _ensure_bucket_exists(s3_client, bucket)
-            s3_client.upload_fileobj(
-                io.BytesIO(pdf_bytes),
-                bucket,
-                object_key,
-                ExtraArgs={'ContentType': 'application/pdf'},
-            )
-
-            job.status = ExportJob.STATUS_COMPLETED
-            job.completed_at = timezone.now()
-            job.object_key = object_key
-            job.sha256 = sha256
-            job.size_bytes = size_bytes
-            job.save(update_fields=['status', 'completed_at', 'object_key', 'sha256', 'size_bytes'])
-
-            create_audit_event(
+            payload = _run_export_job(
                 request=request,
-                action='EXPORT_CREATED',
-                entity_type='ExportJob',
-                entity_id=job.id,
-                after_json=ExportJobSerializer(job).data,
+                job=job,
+                object_key=object_key,
+                pdf_bytes=generate_control_pdf_bytes(control),
             )
-
-            expires_in = 600
-            download_url = s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': bucket, 'Key': object_key},
-                ExpiresIn=expires_in,
-            )
-            return Response(
-                {
-                    'job': ExportJobSerializer(job).data,
-                    'download': {'url': download_url, 'expires_in': expires_in},
-                },
-                status=status.HTTP_201_CREATED,
-            )
+            return Response(payload, status=status.HTTP_201_CREATED)
         except Exception as exc:
             job.status = ExportJob.STATUS_FAILED
             job.error_text = str(exc)
@@ -315,6 +181,95 @@ class ControlExportView(APIView):
             )
 
 
+class SectionExportView(APIView):
+    def post(self, request, section_code):
+        pack = _latest_pack_or_404()
+        if pack is None:
+            return Response({'detail': 'No standard pack found'}, status=status.HTTP_404_NOT_FOUND)
+
+        normalized_code = section_code.strip().upper()
+        controls = list(pack.controls.filter(control_code__icontains=f'-{normalized_code}-').order_by('sort_order'))
+        if not controls:
+            return Response({'detail': 'No controls found for section'}, status=status.HTTP_404_NOT_FOUND)
+
+        bucket = getattr(settings, 'MINIO_BUCKET_EXPORTS', 'exports')
+        placeholder_key = f"exports/pending/{timezone.now().strftime('%Y%m%d%H%M%S')}-section-{normalized_code}.pdf"
+        job = ExportJob.objects.create(
+            job_type=ExportJob.JOB_SECTION_PACK,
+            status=ExportJob.STATUS_RUNNING,
+            standard_pack=pack,
+            section_code=normalized_code,
+            filters_json={'section_code': normalized_code},
+            created_by=(request.user if request.user.is_authenticated else None),
+            bucket=bucket,
+            object_key=placeholder_key,
+            filename=f'{pack.authority_code}-{pack.version}-section-{normalized_code}.pdf',
+        )
+        object_key = f'exports/{pack.authority_code}/{pack.version}/sections/{normalized_code}/{job.id}.pdf'
+
+        try:
+            pdf_bytes = generate_controls_pdf_bytes(
+                pack=pack,
+                controls=controls,
+                title=f'Section Pack - {normalized_code}',
+                section_code=normalized_code,
+            )
+            payload = _run_export_job(request=request, job=job, object_key=object_key, pdf_bytes=pdf_bytes)
+            return Response(payload, status=status.HTTP_201_CREATED)
+        except Exception as exc:
+            job.status = ExportJob.STATUS_FAILED
+            job.error_text = str(exc)
+            job.completed_at = timezone.now()
+            job.save(update_fields=['status', 'error_text', 'completed_at'])
+            return Response(
+                {'detail': 'Section export failed', 'job': ExportJobSerializer(job).data},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class FullPackExportView(APIView):
+    def post(self, request):
+        pack = _latest_pack_or_404()
+        if pack is None:
+            return Response({'detail': 'No standard pack found'}, status=status.HTTP_404_NOT_FOUND)
+
+        controls = list(pack.controls.order_by('sort_order'))
+        if not controls:
+            return Response({'detail': 'No controls found in selected pack'}, status=status.HTTP_404_NOT_FOUND)
+
+        bucket = getattr(settings, 'MINIO_BUCKET_EXPORTS', 'exports')
+        placeholder_key = f"exports/pending/{timezone.now().strftime('%Y%m%d%H%M%S')}-full.pdf"
+        job = ExportJob.objects.create(
+            job_type=ExportJob.JOB_FULL_PACK,
+            status=ExportJob.STATUS_RUNNING,
+            standard_pack=pack,
+            filters_json={},
+            created_by=(request.user if request.user.is_authenticated else None),
+            bucket=bucket,
+            object_key=placeholder_key,
+            filename=f'{pack.authority_code}-{pack.version}-full-pack.pdf',
+        )
+        object_key = f'exports/{pack.authority_code}/{pack.version}/full/{job.id}.pdf'
+
+        try:
+            pdf_bytes = generate_controls_pdf_bytes(
+                pack=pack,
+                controls=controls,
+                title=f'Full Pack - {pack.authority_code} {pack.version}',
+            )
+            payload = _run_export_job(request=request, job=job, object_key=object_key, pdf_bytes=pdf_bytes)
+            return Response(payload, status=status.HTTP_201_CREATED)
+        except Exception as exc:
+            job.status = ExportJob.STATUS_FAILED
+            job.error_text = str(exc)
+            job.completed_at = timezone.now()
+            job.save(update_fields=['status', 'error_text', 'completed_at'])
+            return Response(
+                {'detail': 'Full export failed', 'job': ExportJobSerializer(job).data},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
 class ExportDownloadView(APIView):
     def get(self, request, job_id):
         job = get_object_or_404(ExportJob, pk=job_id)
@@ -322,10 +277,177 @@ class ExportDownloadView(APIView):
             return Response({'detail': 'Export is not completed.'}, status=status.HTTP_400_BAD_REQUEST)
 
         s3_client = get_s3_client()
-        expires_in = 600
-        url = s3_client.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': job.bucket, 'Key': job.object_key},
-            ExpiresIn=expires_in,
+        return Response(_export_download_payload(s3_client, job.bucket, job.object_key), status=status.HTTP_200_OK)
+
+
+class DashboardSummaryView(APIView):
+    permission_classes = [IsAdminManagerAuditor]
+
+    def get(self, request):
+        pack = _latest_pack_or_404()
+        if pack is None:
+            return Response({'detail': 'No standard pack found'}, status=status.HTTP_404_NOT_FOUND)
+
+        controls = list(pack.controls.select_related('status_cache').order_by('sort_order'))
+        today = timezone.localdate()
+        near_due_cutoff = today + timedelta(days=14)
+
+        totals = {
+            'total_controls': len(controls),
+            'NOT_STARTED': 0,
+            'IN_PROGRESS': 0,
+            'READY': 0,
+            'VERIFIED': 0,
+            'OVERDUE': 0,
+            'NEAR_DUE': 0,
+        }
+        section_totals = {}
+        upcoming_due = []
+
+        for control in controls:
+            cache = getattr(control, 'status_cache', None)
+            status_name = cache.computed_status if cache else 'NOT_STARTED'
+            totals[status_name] = totals.get(status_name, 0) + 1
+
+            section_code = get_section_code_from_control(control.control_code)
+            if section_code not in section_totals:
+                section_totals[section_code] = {
+                    'section_code': section_code,
+                    'total': 0,
+                    'READY': 0,
+                    'VERIFIED': 0,
+                    'OVERDUE': 0,
+                }
+            section_totals[section_code]['total'] += 1
+            if status_name in ('READY', 'VERIFIED', 'OVERDUE'):
+                section_totals[section_code][status_name] += 1
+
+            if cache and cache.next_due_date and status_name != 'OVERDUE' and today <= cache.next_due_date <= near_due_cutoff:
+                totals['NEAR_DUE'] += 1
+                upcoming_due.append(
+                    {
+                        'control_id': control.id,
+                        'control_code': control.control_code,
+                        'section_code': section_code,
+                        'next_due_date': cache.next_due_date,
+                    }
+                )
+
+        last_computed_at = (
+            ControlStatusCache.objects
+            .filter(control__standard_pack=pack)
+            .aggregate(value=Max('computed_at'))
+            .get('value')
         )
-        return Response({'url': url, 'expires_in': expires_in}, status=status.HTTP_200_OK)
+
+        upcoming_due.sort(key=lambda row: row['next_due_date'])
+
+        return Response(
+            {
+                'pack_version': pack.version,
+                'totals': totals,
+                'sections': sorted(section_totals.values(), key=lambda row: row['section_code']),
+                'upcoming_due': upcoming_due[:20],
+                'last_computed_at': last_computed_at,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AlertsListView(APIView):
+    permission_classes = [IsAdminManagerAuditor]
+
+    def get(self, request):
+        alerts = (
+            ComplianceAlert.objects
+            .filter(cleared_at__isnull=True)
+            .select_related('control')
+            .order_by('-triggered_at')
+        )
+        return Response(ComplianceAlertSerializer(alerts, many=True).data, status=status.HTTP_200_OK)
+
+
+class ControlNotesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, control_id):
+        control = get_object_or_404(Control, pk=control_id)
+        notes = control.notes.select_related('created_by', 'resolved_by').all()
+        return Response(ControlNoteSerializer(notes, many=True).data, status=status.HTTP_200_OK)
+
+    def post(self, request, control_id):
+        if not IsAdminOrManager().has_permission(request, self):
+            return Response({'detail': 'You do not have permission to perform this action.'}, status=status.HTTP_403_FORBIDDEN)
+
+        control = get_object_or_404(Control, pk=control_id)
+        serializer = ControlNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        note = serializer.save(
+            control=control,
+            created_by=(request.user if request.user.is_authenticated else None),
+        )
+        create_audit_event(
+            request=request,
+            action='CONTROL_NOTE_CREATED',
+            entity_type='ControlNote',
+            entity_id=note.id,
+            after_json=ControlNoteSerializer(note).data,
+        )
+        return Response(ControlNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+
+class ControlNoteDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, control_id, note_id):
+        if not IsAdminOrManager().has_permission(request, self):
+            return Response({'detail': 'You do not have permission to perform this action.'}, status=status.HTTP_403_FORBIDDEN)
+
+        note = get_object_or_404(ControlNote, pk=note_id, control_id=control_id)
+        before_data = ControlNoteSerializer(note).data
+
+        allowed_fields = {'note_type', 'text', 'resolved'}
+        updates = {k: v for k, v in request.data.items() if k in allowed_fields}
+
+        if 'note_type' in updates:
+            note.note_type = updates['note_type']
+        if 'text' in updates:
+            note.text = updates['text']
+        if 'resolved' in updates:
+            resolved = bool(updates['resolved'])
+            if resolved and not note.resolved:
+                note.resolved = True
+                note.resolved_at = timezone.now()
+                note.resolved_by = request.user if request.user.is_authenticated else None
+            elif not resolved and note.resolved:
+                note.resolved = False
+                note.resolved_at = None
+                note.resolved_by = None
+
+        note.save()
+        after_data = ControlNoteSerializer(note).data
+        create_audit_event(
+            request=request,
+            action='CONTROL_NOTE_UPDATED',
+            entity_type='ControlNote',
+            entity_id=note.id,
+            before_json=before_data,
+            after_json=after_data,
+        )
+        return Response(after_data, status=status.HTTP_200_OK)
+
+    def delete(self, request, control_id, note_id):
+        if not IsAdminOrManager().has_permission(request, self):
+            return Response({'detail': 'You do not have permission to perform this action.'}, status=status.HTTP_403_FORBIDDEN)
+
+        note = get_object_or_404(ControlNote, pk=note_id, control_id=control_id)
+        before_data = ControlNoteSerializer(note).data
+        note.delete()
+        create_audit_event(
+            request=request,
+            action='CONTROL_NOTE_DELETED',
+            entity_type='ControlNote',
+            entity_id=note_id,
+            before_json=before_data,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)

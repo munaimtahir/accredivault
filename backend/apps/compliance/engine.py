@@ -4,7 +4,7 @@ from typing import Any
 from django.db.models import Max, Q, QuerySet
 from django.utils import timezone
 
-from apps.compliance.models import ControlStatusCache, ControlVerification, EvidenceRule
+from apps.compliance.models import ComplianceAlert, ControlStatusCache, ControlVerification, EvidenceRule
 from apps.evidence.models import ControlEvidenceLink, EvidenceItem
 from apps.standards.models import Control
 
@@ -192,8 +192,41 @@ def compute_control_status(control: Control) -> dict[str, Any]:
     }
 
 
-def recompute_and_persist(control: Control) -> ControlStatusCache:
-    computed = compute_control_status(control)
+def sync_alerts(control: Control, computed_status: str, next_due_date) -> None:
+    now = timezone.now()
+    today = timezone.localdate()
+    near_due_cutoff = today + timedelta(days=14)
+
+    active_overdue = ComplianceAlert.objects.filter(
+        control=control,
+        alert_type=ComplianceAlert.TYPE_OVERDUE,
+        cleared_at__isnull=True,
+    )
+    if computed_status == 'OVERDUE':
+        if not active_overdue.exists():
+            ComplianceAlert.objects.create(control=control, alert_type=ComplianceAlert.TYPE_OVERDUE)
+    else:
+        active_overdue.update(cleared_at=now)
+
+    is_near_due = bool(
+        next_due_date is not None
+        and today <= next_due_date <= near_due_cutoff
+        and computed_status != 'OVERDUE'
+    )
+    active_near_due = ComplianceAlert.objects.filter(
+        control=control,
+        alert_type=ComplianceAlert.TYPE_NEAR_DUE,
+        cleared_at__isnull=True,
+    )
+    if is_near_due:
+        if not active_near_due.exists():
+            ComplianceAlert.objects.create(control=control, alert_type=ComplianceAlert.TYPE_NEAR_DUE)
+    else:
+        active_near_due.update(cleared_at=now)
+
+
+def recompute_and_persist(control: Control, computed: dict[str, Any] | None = None) -> ControlStatusCache:
+    computed = computed or compute_control_status(control)
     cache, _created = ControlStatusCache.objects.update_or_create(
         control=control,
         defaults={
@@ -202,5 +235,10 @@ def recompute_and_persist(control: Control) -> ControlStatusCache:
             'next_due_date': computed['next_due_date'],
             'details_json': computed['details_json'],
         },
+    )
+    sync_alerts(
+        control=control,
+        computed_status=cache.computed_status,
+        next_due_date=cache.next_due_date,
     )
     return cache

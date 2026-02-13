@@ -88,6 +88,56 @@ export interface ExportJob {
   error_text?: string | null;
 }
 
+export interface DashboardSummary {
+  pack_version: string;
+  totals: {
+    total_controls: number;
+    NOT_STARTED: number;
+    IN_PROGRESS: number;
+    READY: number;
+    VERIFIED: number;
+    OVERDUE: number;
+    NEAR_DUE: number;
+  };
+  sections: Array<{
+    section_code: string;
+    total: number;
+    READY: number;
+    VERIFIED: number;
+    OVERDUE: number;
+  }>;
+  upcoming_due: Array<{
+    control_id: number;
+    control_code: string;
+    section_code: string;
+    next_due_date: string;
+  }>;
+  last_computed_at: string | null;
+}
+
+export interface ComplianceAlert {
+  id: string;
+  control_id: number;
+  control_code: string;
+  alert_type: 'OVERDUE' | 'NEAR_DUE';
+  triggered_at: string;
+  cleared_at?: string | null;
+}
+
+export interface ControlNote {
+  id: string;
+  control: number;
+  note_type: 'INTERNAL' | 'INSPECTION' | 'CORRECTIVE_ACTION';
+  text: string;
+  created_by?: number | null;
+  created_by_username?: string;
+  created_at: string;
+  resolved: boolean;
+  resolved_at?: string | null;
+  resolved_by?: number | null;
+  resolved_by_username?: string;
+}
+
 export const api = {
   async getControls(params?: { section?: string; q?: string }): Promise<Control[]> {
     const queryParams = new URLSearchParams();
@@ -158,6 +208,30 @@ export const api = {
     return response.json();
   },
 
+  async createSectionExport(sectionCode: string): Promise<{ job: ExportJob; download: { url: string; expires_in: number } }> {
+    const response = await fetch(`${API_BASE_URL}/exports/section/${sectionCode}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async createFullExport(): Promise<{ job: ExportJob; download: { url: string; expires_in: number } }> {
+    const response = await fetch(`${API_BASE_URL}/exports/full`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
   async downloadExport(jobId: string): Promise<{ url: string; expires_in: number }> {
     const response = await fetch(`${API_BASE_URL}/exports/${jobId}/download`);
     if (!response.ok) {
@@ -172,6 +246,63 @@ export const api = {
       throw new Error(`API error: ${response.statusText}`);
     }
     return response.json();
+  },
+
+  async getDashboardSummary(): Promise<DashboardSummary> {
+    const response = await fetch(`${API_BASE_URL}/dashboard/summary`);
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async getAlerts(): Promise<ComplianceAlert[]> {
+    const response = await fetch(`${API_BASE_URL}/alerts`);
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async getControlNotes(controlId: number): Promise<ControlNote[]> {
+    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/notes`);
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async createControlNote(controlId: number, payload: { note_type: string; text: string }): Promise<ControlNote> {
+    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async updateControlNote(controlId: number, noteId: string, payload: Partial<{ note_type: string; text: string; resolved: boolean }>): Promise<ControlNote> {
+    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/notes/${noteId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  async deleteControlNote(controlId: number, noteId: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/notes/${noteId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
   },
 
   async createEvidenceItem(payload: {

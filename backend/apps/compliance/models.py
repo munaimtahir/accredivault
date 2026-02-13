@@ -176,3 +176,57 @@ class ExportJob(models.Model):
 
     def __str__(self):
         return f"{self.job_type}:{self.status}:{self.id}"
+
+
+class ControlNote(models.Model):
+    TYPE_INTERNAL = 'INTERNAL'
+    TYPE_INSPECTION = 'INSPECTION'
+    TYPE_CORRECTIVE_ACTION = 'CORRECTIVE_ACTION'
+    NOTE_TYPE_CHOICES = [
+        (TYPE_INTERNAL, 'Internal'),
+        (TYPE_INSPECTION, 'Inspection'),
+        (TYPE_CORRECTIVE_ACTION, 'Corrective Action'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    control = models.ForeignKey(Control, on_delete=models.CASCADE, related_name='notes', db_index=True)
+    note_type = models.CharField(max_length=30, choices=NOTE_TYPE_CHOICES, db_index=True)
+    text = models.TextField()
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved = models.BooleanField(default=False)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='resolved_control_notes',
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.control_id}:{self.note_type}:{self.id}"
+
+
+class ComplianceAlert(models.Model):
+    TYPE_OVERDUE = 'OVERDUE'
+    TYPE_NEAR_DUE = 'NEAR_DUE'
+    ALERT_TYPE_CHOICES = [
+        (TYPE_OVERDUE, 'Overdue'),
+        (TYPE_NEAR_DUE, 'Near Due'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    control = models.ForeignKey(Control, on_delete=models.CASCADE, related_name='alerts', db_index=True)
+    alert_type = models.CharField(max_length=20, choices=ALERT_TYPE_CHOICES, db_index=True)
+    triggered_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    cleared_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    class Meta:
+        ordering = ['-triggered_at']
+
+    def __str__(self):
+        return f"{self.control_id}:{self.alert_type}:{'active' if self.cleared_at is None else 'cleared'}"

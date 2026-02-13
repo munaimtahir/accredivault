@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { api, type Control, type ControlStatus, type ControlTimeline, type ExportJob } from '../api';
+import React, { useEffect, useRef, useState } from 'react';
+import { api, type Control, type ControlNote, type ControlStatus, type ControlTimeline, type ExportJob } from '../api';
 import './Controls.css';
 
 const Controls: React.FC = () => {
@@ -36,10 +36,51 @@ const Controls: React.FC = () => {
   const [evidenceSubmitting, setEvidenceSubmitting] = useState(false);
   const [evidenceSubmitError, setEvidenceSubmitError] = useState<string | null>(null);
   const [evidenceSubmitSuccess, setEvidenceSubmitSuccess] = useState<string | null>(null);
+  const [notes, setNotes] = useState<ControlNote[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [noteType, setNoteType] = useState<'INTERNAL' | 'INSPECTION' | 'CORRECTIVE_ACTION'>('INTERNAL');
+  const [notesError, setNotesError] = useState<string | null>(null);
+  const [noteModalOpen, setNoteModalOpen] = useState(false);
+  const noteModalRef = useRef<HTMLDivElement | null>(null);
+  const addNoteButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     loadControls();
   }, []);
+
+  useEffect(() => {
+    if (!noteModalOpen) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const focusables = noteModalRef.current?.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    focusables?.[0]?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setNoteModalOpen(false);
+      }
+      if (event.key === 'Tab' && focusables && focusables.length > 0) {
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      (previouslyFocused || addNoteButtonRef.current)?.focus();
+    };
+  }, [noteModalOpen]);
 
   const getStatusBadge = (status: string) => {
     const statusClasses: Record<string, string> = {
@@ -110,6 +151,19 @@ const Controls: React.FC = () => {
     }
   };
 
+  const loadControlNotes = async (controlId: number) => {
+    try {
+      setNotesLoading(true);
+      setNotesError(null);
+      const data = await api.getControlNotes(controlId);
+      setNotes(data);
+    } catch (err) {
+      setNotesError(err instanceof Error ? err.message : 'Failed to load notes');
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
   const refreshSelectedControlRow = async (controlId: number) => {
     const data = await loadControls(sectionFilter || undefined, searchQuery || undefined);
     const match = data.find((c) => c.id === controlId);
@@ -123,6 +177,7 @@ const Controls: React.FC = () => {
       loadTimeline(controlId),
       loadControlStatus(controlId),
       loadControlExports(controlId),
+      loadControlNotes(controlId),
       refreshSelectedControlRow(controlId),
     ]);
   };
@@ -248,7 +303,53 @@ const Controls: React.FC = () => {
     }
   };
 
+  const handleCreateNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedControl) return;
+    if (!noteText.trim()) {
+      setNotesError('Note text is required.');
+      return;
+    }
+
+    try {
+      setNotesError(null);
+      await api.createControlNote(selectedControl.id, { note_type: noteType, text: noteText.trim() });
+      setNoteText('');
+      setNoteModalOpen(false);
+      await loadControlNotes(selectedControl.id);
+    } catch (err) {
+      setNotesError(err instanceof Error ? err.message : 'Failed to create note');
+    }
+  };
+
+  const handleToggleResolved = async (note: ControlNote) => {
+    if (!selectedControl) return;
+    try {
+      setNotesError(null);
+      await api.updateControlNote(selectedControl.id, note.id, { resolved: !note.resolved });
+      await loadControlNotes(selectedControl.id);
+    } catch (err) {
+      setNotesError(err instanceof Error ? err.message : 'Failed to update note');
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!selectedControl) return;
+    try {
+      setNotesError(null);
+      await api.deleteControlNote(selectedControl.id, noteId);
+      await loadControlNotes(selectedControl.id);
+    } catch (err) {
+      setNotesError(err instanceof Error ? err.message : 'Failed to delete note');
+    }
+  };
+
   const statusLabel = controlStatus?.computed_status || selectedControl?.status || 'NOT_STARTED';
+  const noteTypeLabel = (type: ControlNote['note_type']) => {
+    if (type === 'CORRECTIVE_ACTION') return 'Corrective Action';
+    if (type === 'INSPECTION') return 'Inspection';
+    return 'Internal';
+  };
 
   return (
     <div className="controls-container">
@@ -315,7 +416,16 @@ const Controls: React.FC = () => {
                   <tr
                     key={control.id}
                     className={selectedControl?.id === control.id ? 'selected-row' : ''}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open ${control.control_code}`}
                     onClick={() => handleSelectControl(control)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleSelectControl(control);
+                      }
+                    }}
                   >
                     <td className="control-code">{control.control_code}</td>
                     <td>{control.section}</td>
@@ -348,6 +458,9 @@ const Controls: React.FC = () => {
                 setActionError(null);
                 setActionSuccess(null);
                 setLastDownloadUrl(null);
+                setNotes([]);
+                setNotesError(null);
+                setNoteModalOpen(false);
               }}
             >
               Close
@@ -369,6 +482,7 @@ const Controls: React.FC = () => {
           {statusError && <div className="error-banner">{statusError}</div>}
 
           <div className="action-panel">
+            <h4 className="panel-title">Verification Actions</h4>
             <div className="form-group">
               <label>Verification Remarks (optional)</label>
               <textarea
@@ -424,6 +538,87 @@ const Controls: React.FC = () => {
               </ul>
             )}
           </div>
+
+          <div className="exports-panel">
+            <h3>Control Notes</h3>
+            <button
+              type="button"
+              className="btn-primary"
+              ref={addNoteButtonRef}
+              onClick={() => setNoteModalOpen(true)}
+              style={{ marginBottom: '1rem' }}
+            >
+              Add Note
+            </button>
+            {notesLoading && <div className="loading">Loading notes...</div>}
+            {notesError && <div className="error-banner">{notesError}</div>}
+            {!notesLoading && (
+              <ul className="export-list">
+                {notes.length ? (
+                  notes.map((note) => (
+                    <li key={note.id}>
+                      <span className="note-copy">
+                        <span className="note-meta">
+                          <span className="note-type">{noteTypeLabel(note.note_type)}</span>
+                          <span className={`note-state ${note.resolved ? 'resolved' : 'open'}`}>
+                            {note.resolved ? 'Resolved' : 'Open'}
+                          </span>
+                          <span>{new Date(note.created_at).toLocaleString()}</span>
+                        </span>
+                        <span>{note.text}</span>
+                      </span>
+                      <div>
+                        <button type="button" className="btn-secondary btn-small" onClick={() => handleToggleResolved(note)}>
+                          {note.resolved ? 'Reopen' : 'Resolve'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary btn-small"
+                          onClick={() => handleDeleteNote(note.id)}
+                          style={{ marginLeft: '0.35rem' }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </li>
+                  ))
+                ) : (
+                  <li className="muted">No notes added.</li>
+                )}
+              </ul>
+            )}
+          </div>
+
+          {noteModalOpen && (
+            <div className="modal-overlay">
+              <div className="modal-card" ref={noteModalRef} role="dialog" aria-modal="true" aria-labelledby="note-dialog-title">
+                <h3 id="note-dialog-title">Add Note</h3>
+                <form onSubmit={handleCreateNote} className="form-group">
+                  <label>Note Type</label>
+                  <select
+                    value={noteType}
+                    onChange={(e) => setNoteType(e.target.value as 'INTERNAL' | 'INSPECTION' | 'CORRECTIVE_ACTION')}
+                  >
+                    <option value="INTERNAL">Internal</option>
+                    <option value="INSPECTION">Inspection</option>
+                    <option value="CORRECTIVE_ACTION">Corrective Action</option>
+                  </select>
+                  <label style={{ marginTop: '0.5rem' }}>Note Text</label>
+                  <textarea
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    placeholder="Add control-level note"
+                  />
+                  <div className="action-buttons" style={{ marginTop: '0.75rem' }}>
+                    <button type="submit" className="btn-primary">Save Note</button>
+                    <button type="button" className="btn-secondary" onClick={() => setNoteModalOpen(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           <div className="evidence-grid">
             <div className="evidence-form">
