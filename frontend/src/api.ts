@@ -287,6 +287,20 @@ async function authFetch(
   return response;
 }
 
+async function checkOk(response: Response): Promise<void> {
+  if (!response.ok) {
+    let msg = response.statusText;
+    try {
+      const err = await response.json();
+      if (err.detail) msg = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
+    } catch {
+      /* ignore */
+    }
+    if (response.status === 403) msg = msg || 'You do not have permission to perform this action.';
+    throw new Error(msg);
+  }
+}
+
 // --- API methods (all use authFetch) ---
 
 export const api = {
