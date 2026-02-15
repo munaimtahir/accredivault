@@ -1,19 +1,21 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 from .models import EvidenceItem, EvidenceFile, ControlEvidenceLink
 from .serializers import EvidenceItemSerializer, EvidenceFileSerializer, ControlEvidenceLinkSerializer
 from .storage import get_s3_client, build_object_key, compute_sha256
 from .utils import create_audit_event
+from apps.users.permissions import CanReadControls, CanWriteEvidence
 from apps.compliance.engine import recompute_and_persist
 from apps.standards.models import Control
 from apps.standards.serializers import ControlSerializer
 
 
 class EvidenceItemCreateView(APIView):
-    # TODO: Enforce RBAC in Prompt 3. For now, keep permissions consistent with existing MVP.
+    permission_classes = [CanWriteEvidence]
 
     def post(self, request):
         serializer = EvidenceItemSerializer(data=request.data)
@@ -33,7 +35,7 @@ class EvidenceItemCreateView(APIView):
 
 
 class EvidenceFileUploadView(APIView):
-    # TODO: Enforce RBAC in Prompt 3. For now, keep permissions consistent with existing MVP.
+    permission_classes = [CanWriteEvidence]
 
     def post(self, request, evidence_item_id):
         evidence_item = get_object_or_404(EvidenceItem, pk=evidence_item_id)
@@ -87,7 +89,7 @@ class EvidenceFileUploadView(APIView):
 
 
 class EvidenceFileDownloadView(APIView):
-    # TODO: Enforce RBAC in Prompt 3. For now, keep permissions consistent with existing MVP.
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, file_id):
         evidence_file = get_object_or_404(EvidenceFile, pk=file_id)
@@ -102,7 +104,7 @@ class EvidenceFileDownloadView(APIView):
 
 
 class ControlEvidenceLinkView(APIView):
-    # TODO: Enforce RBAC in Prompt 3. For now, keep permissions consistent with existing MVP.
+    permission_classes = [CanWriteEvidence]
 
     def post(self, request, control_id):
         control = get_object_or_404(Control, pk=control_id)
@@ -137,7 +139,7 @@ class ControlEvidenceLinkView(APIView):
 
 
 class ControlEvidenceUnlinkView(APIView):
-    # TODO: Enforce RBAC in Prompt 3. For now, keep permissions consistent with existing MVP.
+    permission_classes = [CanWriteEvidence]
 
     def delete(self, request, control_id, link_id):
         link = get_object_or_404(ControlEvidenceLink, pk=link_id, control_id=control_id)
@@ -156,7 +158,7 @@ class ControlEvidenceUnlinkView(APIView):
 
 
 class ControlTimelineView(APIView):
-    # TODO: Enforce RBAC in Prompt 3. For now, keep permissions consistent with existing MVP.
+    permission_classes = [CanReadControls]
 
     def get(self, request, control_id):
         control = get_object_or_404(Control, pk=control_id)

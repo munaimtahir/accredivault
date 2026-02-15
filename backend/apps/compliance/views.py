@@ -8,13 +8,14 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+
+from apps.users.permissions import CanExport, CanVerifyControls, CanViewAudit
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.compliance.engine import get_section_code_from_control, recompute_and_persist
 from apps.compliance.export_service import generate_control_pdf_bytes, generate_controls_pdf_bytes
 from apps.compliance.models import ComplianceAlert, ControlNote, ControlStatusCache, ControlVerification, ExportJob
-from apps.compliance.permissions import IsAdminManagerAuditor, IsAdminOrManager
 from apps.compliance.serializers import (
     ComplianceAlertSerializer,
     ControlNoteSerializer,
@@ -84,6 +85,8 @@ def _run_export_job(request, job: ExportJob, object_key: str, pdf_bytes: bytes):
 
 
 class ControlStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, control_id):
         control = get_object_or_404(Control, pk=control_id)
         cache = recompute_and_persist(control)
@@ -91,6 +94,7 @@ class ControlStatusView(APIView):
 
 
 class ControlVerifyView(APIView):
+    permission_classes = [CanVerifyControls]
     verification_status = ControlVerification.STATUS_VERIFIED
     audit_action = 'CONTROL_VERIFIED'
 
@@ -135,6 +139,8 @@ class ControlRejectView(ControlVerifyView):
 
 
 class ControlExportView(APIView):
+    permission_classes = [CanExport]
+
     def get(self, request, control_id):
         control = get_object_or_404(Control, pk=control_id)
         jobs = ExportJob.objects.filter(
@@ -182,6 +188,8 @@ class ControlExportView(APIView):
 
 
 class SectionExportView(APIView):
+    permission_classes = [CanExport]
+
     def post(self, request, section_code):
         pack = _latest_pack_or_404()
         if pack is None:
@@ -228,6 +236,8 @@ class SectionExportView(APIView):
 
 
 class FullPackExportView(APIView):
+    permission_classes = [CanExport]
+
     def post(self, request):
         pack = _latest_pack_or_404()
         if pack is None:
@@ -271,6 +281,8 @@ class FullPackExportView(APIView):
 
 
 class ExportDownloadView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, job_id):
         job = get_object_or_404(ExportJob, pk=job_id)
         if job.status != ExportJob.STATUS_COMPLETED:
@@ -281,7 +293,7 @@ class ExportDownloadView(APIView):
 
 
 class DashboardSummaryView(APIView):
-    permission_classes = [IsAdminManagerAuditor]
+    permission_classes = [CanViewAudit]
 
     def get(self, request):
         pack = _latest_pack_or_404()
@@ -355,7 +367,7 @@ class DashboardSummaryView(APIView):
 
 
 class AlertsListView(APIView):
-    permission_classes = [IsAdminManagerAuditor]
+    permission_classes = [CanViewAudit]
 
     def get(self, request):
         alerts = (
@@ -376,7 +388,7 @@ class ControlNotesView(APIView):
         return Response(ControlNoteSerializer(notes, many=True).data, status=status.HTTP_200_OK)
 
     def post(self, request, control_id):
-        if not IsAdminOrManager().has_permission(request, self):
+        if not CanVerifyControls().has_permission(request, self):
             return Response({'detail': 'You do not have permission to perform this action.'}, status=status.HTTP_403_FORBIDDEN)
 
         control = get_object_or_404(Control, pk=control_id)
@@ -400,7 +412,7 @@ class ControlNoteDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, control_id, note_id):
-        if not IsAdminOrManager().has_permission(request, self):
+        if not CanVerifyControls().has_permission(request, self):
             return Response({'detail': 'You do not have permission to perform this action.'}, status=status.HTTP_403_FORBIDDEN)
 
         note = get_object_or_404(ControlNote, pk=note_id, control_id=control_id)
@@ -437,7 +449,7 @@ class ControlNoteDetailView(APIView):
         return Response(after_data, status=status.HTTP_200_OK)
 
     def delete(self, request, control_id, note_id):
-        if not IsAdminOrManager().has_permission(request, self):
+        if not CanVerifyControls().has_permission(request, self):
             return Response({'detail': 'You do not have permission to perform this action.'}, status=status.HTTP_403_FORBIDDEN)
 
         note = get_object_or_404(ControlNote, pk=note_id, control_id=control_id)

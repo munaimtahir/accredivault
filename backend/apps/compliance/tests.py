@@ -40,6 +40,8 @@ class ComplianceEngineAndApiTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.user = User.objects.create_user(username='compliance_tester', password='pass1234')
+        Group.objects.get_or_create(name='MANAGER')
+        self.user.groups.add(Group.objects.get(name='MANAGER'))
         self.client.force_authenticate(user=self.user)
 
         self.pack = StandardPack.objects.create(

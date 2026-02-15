@@ -2,12 +2,18 @@ import hashlib
 from unittest.mock import patch
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 from apps.standards.models import StandardPack, Control
 from .models import EvidenceItem, EvidenceFile, ControlEvidenceLink
 
 User = get_user_model()
+
+
+def _assign_role(user, role_name):
+    group, _ = Group.objects.get_or_create(name=role_name)
+    user.groups.add(group)
 
 
 class DummyS3Client:
@@ -27,6 +33,7 @@ class EvidenceAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.user = User.objects.create_user(username='tester', password='pass1234')
+        _assign_role(self.user, 'DATA_ENTRY')
         self.client.force_authenticate(user=self.user)
 
         self.pack = StandardPack.objects.create(

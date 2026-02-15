@@ -1,7 +1,10 @@
 from rest_framework import viewsets, filters
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.db.models import Q
+from apps.users.permissions import CanReadControls
+
 from .models import Control, StandardPack
 from .serializers import ControlSerializer, StandardPackSerializer
 import boto3
@@ -17,6 +20,7 @@ class ControlViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = Control.objects.select_related('standard_pack', 'status_cache').filter(active=True)
     serializer_class = ControlSerializer
+    permission_classes = [CanReadControls]
     filter_backends = [filters.SearchFilter]
     search_fields = ['control_code', 'section', 'standard', 'indicator']
     
@@ -42,6 +46,7 @@ class ControlViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def health_check(request):
     """
     Health check endpoint that verifies:
