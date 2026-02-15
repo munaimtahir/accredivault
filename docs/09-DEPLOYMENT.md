@@ -1,5 +1,17 @@
 # Deployment (Docker + Caddy + MinIO)
 
+## Host Caddy (optional)
+
+If using a host-level Caddy in front of the internal stack, add:
+
+```
+accv.alshifalab.pk {
+  reverse_proxy 127.0.0.1:8016
+}
+```
+
+This forwards traffic to the internal Caddy container (port 8016).
+
 ## Services
 - Postgres 16
 - MinIO

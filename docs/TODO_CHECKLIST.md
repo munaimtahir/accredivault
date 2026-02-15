@@ -132,23 +132,23 @@
 
 ---
 
-## Prompt 3 (Auth, Audit, Polish) - 📅 FUTURE
+## Prompt 3 (Auth, Audit, Polish) - ✅ COMPLETED
 
 ### Authentication & Authorization
-- [ ] JWT token authentication
-- [ ] User registration
-- [ ] Login/logout endpoints
-- [ ] Role-based permissions
-- [ ] Password reset
-- [ ] Frontend auth state management
+- [x] JWT token authentication (djangorestframework-simplejwt)
+- [x] User management (create, update, reset password)
+- [x] Login/refresh/me endpoints
+- [x] Role-based permissions (ADMIN, MANAGER, AUDITOR, DATA_ENTRY, VIEWER)
+- [x] Password reset (ADMIN only)
+- [x] Frontend auth state management (localStorage + Bearer token + 401 refresh retry)
 
 ### Audit Logging
-- [ ] Audit log creation on all changes
-- [ ] Actor capture (user + IP + user agent)
-- [ ] Before/after JSON snapshots
-- [ ] Audit log API endpoints
-- [ ] Audit log viewing in admin
-- [ ] Audit log filtering and search
+- [x] Audit log creation on all changes (existing)
+- [x] Actor capture (user + IP + user agent)
+- [x] Before/after JSON snapshots
+- [x] Audit log API endpoint (GET /api/v1/audit/events)
+- [x] Audit log viewing in admin (existing)
+- [x] Audit log filtering (action, entity_type, q, after, before)
 
 ### UI Polish
 - [ ] Dashboard with summary stats

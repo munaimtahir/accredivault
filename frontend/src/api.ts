@@ -238,10 +238,19 @@ export async function getMe(): Promise<AuthUser> {
   return user;
 }
 
+const AUTH_EXPIRED_EVENT = 'accv-auth-expired';
+
 export function logout(): void {
   localStorage.removeItem(STORAGE_ACCESS);
   localStorage.removeItem(STORAGE_REFRESH);
   localStorage.removeItem(STORAGE_USER);
+  window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+}
+
+export function onAuthExpired(callback: () => void): () => void {
+  const handler = () => callback();
+  window.addEventListener(AUTH_EXPIRED_EVENT, handler);
+  return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handler);
 }
 
 // --- Auth-aware fetch ---
@@ -353,7 +362,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -363,7 +372,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -373,37 +382,37 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
   async downloadExport(jobId: string): Promise<{ url: string; expires_in: number }> {
     const response = await authFetch(`${API_BASE_URL}/exports/${jobId}/download`);
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
   async listControlExports(controlId: number): Promise<ExportJob[]> {
     const response = await authFetch(`${API_BASE_URL}/exports/control/${controlId}`);
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
   async getDashboardSummary(): Promise<DashboardSummary> {
     const response = await authFetch(`${API_BASE_URL}/dashboard/summary`);
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
   async getAlerts(): Promise<ComplianceAlert[]> {
     const response = await authFetch(`${API_BASE_URL}/alerts`);
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
   async getControlNotes(controlId: number): Promise<ControlNote[]> {
     const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/notes`);
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -413,7 +422,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -423,7 +432,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -431,7 +440,7 @@ export const api = {
     const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/notes/${noteId}`, {
       method: 'DELETE',
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
   },
 
   async createEvidenceItem(payload: {
@@ -448,7 +457,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -459,7 +468,7 @@ export const api = {
       method: 'POST',
       body: formData,
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -469,7 +478,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ evidence_item_id: evidenceItemId, note }),
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -477,12 +486,12 @@ export const api = {
     const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/unlink-evidence/${linkId}`, {
       method: 'DELETE',
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
   },
 
   async downloadEvidenceFile(fileId: string): Promise<{ url: string; expires_in: number }> {
     const response = await authFetch(`${API_BASE_URL}/evidence-files/${fileId}/download`);
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -494,7 +503,7 @@ export const api = {
   // Users (ADMIN only)
   async getUsers(): Promise<UserList[]> {
     const response = await authFetch(`${API_BASE_URL}/users`);
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -504,7 +513,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -514,7 +523,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -524,7 +533,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password }),
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
   },
 
   // Audit (ADMIN/MANAGER/AUDITOR)
@@ -538,7 +547,7 @@ export const api = {
     const qs = sp.toString();
     const url = `${API_BASE_URL}/audit/events${qs ? `?${qs}` : ''}`;
     const response = await authFetch(url);
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 };

@@ -4,21 +4,31 @@ import Controls from './components/Controls'
 import Dashboard from './components/Dashboard'
 import Users from './components/Users'
 import Audit from './components/Audit'
-import { isAuthenticated, getStoredUser, logout as apiLogout } from './api'
+import { isAuthenticated, getStoredUser, logout as apiLogout, onAuthExpired } from './api'
 import './App.css'
 
 type Page = 'dashboard' | 'controls' | 'users' | 'audit'
 
 function App() {
   const [authenticated, setAuthenticated] = useState(isAuthenticated())
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard')
+  const userInit = getStoredUser()
+  const canViewAuditInit = userInit?.roles?.some((r) => ['ADMIN', 'MANAGER', 'AUDITOR'].includes(r)) || userInit?.is_superuser
+  const [currentPage, setCurrentPage] = useState<Page>(canViewAuditInit ? 'dashboard' : 'controls')
 
   useEffect(() => {
     setAuthenticated(isAuthenticated())
   }, [])
 
+  useEffect(() => {
+    const unsub = onAuthExpired(() => setAuthenticated(false))
+    return unsub
+  }, [])
+
   const handleLoginSuccess = () => {
     setAuthenticated(true)
+    const u = getStoredUser()
+    const canAudit = u?.roles?.some((r) => ['ADMIN', 'MANAGER', 'AUDITOR'].includes(r)) || u?.is_superuser
+    setCurrentPage(canAudit ? 'dashboard' : 'controls')
   }
 
   const handleLogout = () => {
@@ -34,26 +44,30 @@ function App() {
     return <Login onLoginSuccess={handleLoginSuccess} />
   }
 
+  const effectivePage = currentPage === 'dashboard' && !canViewAudit ? 'controls' : currentPage
+
   return (
     <>
       <nav className="app-nav">
         <div className="nav-brand">AccrediVault</div>
         <div className="nav-links">
+          {canViewAudit && (
+            <button
+              className={effectivePage === 'dashboard' ? 'active' : ''}
+              onClick={() => setCurrentPage('dashboard')}
+            >
+              Dashboard
+            </button>
+          )}
           <button
-            className={currentPage === 'dashboard' ? 'active' : ''}
-            onClick={() => setCurrentPage('dashboard')}
-          >
-            Dashboard
-          </button>
-          <button
-            className={currentPage === 'controls' ? 'active' : ''}
+            className={effectivePage === 'controls' ? 'active' : ''}
             onClick={() => setCurrentPage('controls')}
           >
             Controls
           </button>
           {canViewAudit && (
             <button
-              className={currentPage === 'audit' ? 'active' : ''}
+              className={effectivePage === 'audit' ? 'active' : ''}
               onClick={() => setCurrentPage('audit')}
             >
               Audit
@@ -61,7 +75,7 @@ function App() {
           )}
           {canViewUsers && (
             <button
-              className={currentPage === 'users' ? 'active' : ''}
+              className={effectivePage === 'users' ? 'active' : ''}
               onClick={() => setCurrentPage('users')}
             >
               Users
@@ -82,10 +96,10 @@ function App() {
       </nav>
 
       <main className="animate-fade-in">
-        {currentPage === 'dashboard' && <Dashboard />}
-        {currentPage === 'controls' && <Controls />}
-        {currentPage === 'audit' && <Audit />}
-        {currentPage === 'users' && <Users />}
+        {effectivePage === 'dashboard' && <Dashboard />}
+        {effectivePage === 'controls' && <Controls />}
+        {effectivePage === 'audit' && <Audit />}
+        {effectivePage === 'users' && <Users />}
       </main>
     </>
   )

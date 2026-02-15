@@ -80,10 +80,11 @@
    docker compose exec backend python manage.py migrate
    ```
 
-4. **Create admin user**
+4. **Seed roles and create default admin user** (Prompt 3)
    ```bash
-   docker compose exec backend python manage.py createsuperuser
+   docker compose exec backend python manage.py seed_roles_and_admin
    ```
+   Default credentials: `admin` / `admin12345` (change via `DEFAULT_ADMIN_USERNAME` and `DEFAULT_ADMIN_PASSWORD` env vars).
 
 5. **Import PHC checklist**
    ```bash
@@ -174,6 +175,7 @@
 Verification scripts:
 - `./scripts/verify_mvp.sh`
 - `./scripts/verify_prompt2.sh`
+- `./scripts/verify_prompt3.sh` (Auth + RBAC)
 
 ## 🗂️ Project Structure
 
@@ -219,12 +221,11 @@ accredivault/
 - ✅ Export history + presigned download
 - ℹ️ Exports are synchronous (no Celery/Redis yet)
 
-### Prompt 3 - Auth, Audit, Polish
-- JWT authentication
-- Role-based permissions
-- Complete audit logging
-- Dashboard UI
-- Production hardening
+### Prompt 3 - Auth, Audit, Polish - ✅ Implemented
+- JWT authentication (SimpleJWT)
+- Role-based permissions (ADMIN, MANAGER, AUDITOR, DATA_ENTRY, VIEWER)
+- Audit events API and UI
+- Dashboard, Controls, Users, Audit pages with role-aware nav
 
 ### Prompt 4 - SaaS & Multi-tenancy (Optional)
 - Multi-tenant architecture
