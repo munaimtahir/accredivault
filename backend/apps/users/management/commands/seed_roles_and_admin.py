@@ -24,7 +24,7 @@ class Command(BaseCommand):
             self.stdout.write('All canonical groups already exist.')
 
         username = os.getenv('DEFAULT_ADMIN_USERNAME', 'admin')
-        password = os.getenv('DEFAULT_ADMIN_PASSWORD', 'admin12345')
+        password = os.getenv('DEFAULT_ADMIN_PASSWORD', 'admin123')
 
         user, created = User.objects.get_or_create(
             username=username,
@@ -38,4 +38,7 @@ class Command(BaseCommand):
             user.save()
             self.stdout.write(self.style.SUCCESS(f'Created admin user: {username}'))
         else:
-            self.stdout.write(f'Admin user "{username}" already exists.')
+            # Always sync password from env so redeployments enforce admin/admin123
+            user.set_password(password)
+            user.save()
+            self.stdout.write(self.style.SUCCESS(f'Admin user "{username}" password verified/updated.'))
