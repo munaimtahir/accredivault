@@ -66,6 +66,39 @@
   box-shadow: 0 8px 18px rgba(15, 118, 110, 0.24);
 }
 
+.nav-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.user-chip {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.user-roles {
+  font-size: 0.75rem;
+  opacity: 0.9;
+}
+
+.btn-logout {
+  padding: 0.4rem 0.8rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+
+.btn-logout:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #dc2626;
+}
+
 @media (max-width: 900px) {
   .app-nav {
     padding: 0.75rem 1rem;

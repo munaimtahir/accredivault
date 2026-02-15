@@ -110,13 +110,21 @@ class AuthAndRBACTests(TestCase):
         )
         self.assertIn(verify_resp.status_code, [200, 201])
 
+        class DummyS3:
+            def __init__(self):
+                self.buckets = set()
+            def head_bucket(self, Bucket):
+                if Bucket not in self.buckets:
+                    raise Exception('NoSuchBucket')
+            def create_bucket(self, Bucket):
+                self.buckets.add(Bucket)
+            def upload_fileobj(self, *a, **k):
+                pass
+            def generate_presigned_url(self, *a, **k):
+                return 'http://example.com/presigned'
+
         with patch('apps.compliance.views.get_s3_client') as mock_s3:
-            mock_client = type('DummyS3', (), {
-                'head_bucket': lambda *a, **k: None,
-                'create_bucket': lambda *a, **k: None,
-                'upload_fileobj': lambda *a, **k: None,
-            })()
-            mock_s3.return_value = mock_client
+            mock_s3.return_value = DummyS3()
             export_resp = self.client.post(
                 f'/api/v1/exports/control/{self.control.id}',
                 {},

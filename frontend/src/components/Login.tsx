@@ -1,11 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { login } from '../api';
 import './Login.css';
 
-const Login: React.FC = () => {
-  const handleSubmit = (e: React.FormEvent) => {
+interface LoginProps {
+  onLoginSuccess: () => void;
+}
+
+const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Placeholder - no auth in Prompt 0
-    alert('Authentication not implemented in MVP (Prompt 0)');
+    setError(null);
+    setLoading(true);
+    try {
+      await login(username, password);
+      onLoginSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -16,19 +34,33 @@ const Login: React.FC = () => {
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="username">Username</label>
-            <input type="text" id="username" placeholder="Enter username" />
+            <input
+              type="text"
+              id="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Enter username"
+              autoComplete="username"
+              disabled={loading}
+            />
           </div>
           <div className="form-group">
             <label htmlFor="password">Password</label>
-            <input type="password" id="password" placeholder="Enter password" />
+            <input
+              type="password"
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password"
+              autoComplete="current-password"
+              disabled={loading}
+            />
           </div>
-          <button type="submit" className="login-button">
-            Login (Placeholder)
+          {error && <div className="login-error">{error}</div>}
+          <button type="submit" className="login-button" disabled={loading}>
+            {loading ? 'Logging in...' : 'Login'}
           </button>
         </form>
-        <p className="note">
-          Note: Authentication will be implemented in Prompt 1
-        </p>
       </div>
     </div>
   );

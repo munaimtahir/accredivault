@@ -1,5 +1,24 @@
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
+const STORAGE_ACCESS = 'accv_access';
+const STORAGE_REFRESH = 'accv_refresh';
+const STORAGE_USER = 'accv_user';
+
+export interface AuthUser {
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  roles: string[];
+  is_superuser: boolean;
+}
+
+export interface AuthTokens {
+  access: string;
+  refresh: string;
+  user: AuthUser;
+}
+
 export interface Control {
   id: number;
   control_code: string;
@@ -138,171 +157,269 @@ export interface ControlNote {
   resolved_by_username?: string;
 }
 
+export interface AuditEvent {
+  id: number;
+  created_at: string;
+  actor: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  summary: string;
+}
+
+export interface UserList {
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  is_active: boolean;
+  roles: string[];
+}
+
+// --- Auth ---
+
+export function getStoredUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_USER);
+    return raw ? (JSON.parse(raw) as AuthUser) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getAccessToken(): string | null {
+  return localStorage.getItem(STORAGE_ACCESS);
+}
+
+export function isAuthenticated(): boolean {
+  return !!getAccessToken();
+}
+
+export async function login(username: string, password: string): Promise<AuthTokens> {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || err.error || `Login failed: ${response.statusText}`);
+  }
+  const data = await response.json();
+  localStorage.setItem(STORAGE_ACCESS, data.access);
+  localStorage.setItem(STORAGE_REFRESH, data.refresh);
+  localStorage.setItem(STORAGE_USER, JSON.stringify(data.user));
+  return data;
+}
+
+export async function refreshToken(): Promise<string> {
+  const refresh = localStorage.getItem(STORAGE_REFRESH);
+  if (!refresh) throw new Error('No refresh token');
+  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh }),
+  });
+  if (!response.ok) {
+    logout();
+    throw new Error('Token refresh failed');
+  }
+  const data = await response.json();
+  localStorage.setItem(STORAGE_ACCESS, data.access);
+  if (data.refresh) {
+    localStorage.setItem(STORAGE_REFRESH, data.refresh);
+  }
+  return data.access;
+}
+
+export async function getMe(): Promise<AuthUser> {
+  const user = await authFetch(`${API_BASE_URL}/auth/me`).then((r) => r.json());
+  localStorage.setItem(STORAGE_USER, JSON.stringify(user));
+  return user;
+}
+
+export function logout(): void {
+  localStorage.removeItem(STORAGE_ACCESS);
+  localStorage.removeItem(STORAGE_REFRESH);
+  localStorage.removeItem(STORAGE_USER);
+}
+
+// --- Auth-aware fetch ---
+
+async function authFetch(
+  url: string,
+  options: RequestInit = {},
+  retried = false
+): Promise<Response> {
+  const access = getAccessToken();
+  const headers: Record<string, string> = {
+    ...((options.headers as Record<string, string>) || {}),
+  };
+  if (access) {
+    headers['Authorization'] = `Bearer ${access}`;
+  }
+  if (headers['Content-Type'] === undefined && options.body && typeof options.body === 'string') {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401 && !retried && access) {
+    try {
+      const newAccess = await refreshToken();
+      return authFetch(
+        url,
+        {
+          ...options,
+          headers: {
+            ...((options.headers as Record<string, string>) || {}),
+            Authorization: `Bearer ${newAccess}`,
+          },
+        },
+        true
+      );
+    } catch {
+      logout();
+      return response;
+    }
+  }
+
+  return response;
+}
+
+// --- API methods (all use authFetch) ---
+
 export const api = {
   async getControls(params?: { section?: string; q?: string }): Promise<Control[]> {
     const queryParams = new URLSearchParams();
     if (params?.section) queryParams.append('section', params.section);
     if (params?.q) queryParams.append('q', params.q);
-
     const url = `${API_BASE_URL}/controls/?${queryParams.toString()}`;
-    const response = await fetch(url);
-
+    const response = await authFetch(url);
     if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
     }
-
     const data = await response.json();
-    // Handle both paginated and non-paginated responses
     return data.results || data;
   },
 
   async getControlTimeline(controlId: number): Promise<ControlTimeline> {
-    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/timeline`);
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/timeline`);
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async getControlStatus(controlId: number): Promise<ControlStatus> {
-    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/status`);
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/status`);
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async verifyControl(controlId: number, remarks?: string): Promise<VerificationResponse> {
-    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/verify`, {
+    const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ remarks }),
     });
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async rejectControl(controlId: number, remarks?: string): Promise<VerificationResponse> {
-    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/reject`, {
+    const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/reject`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ remarks }),
     });
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async createControlExport(controlId: number): Promise<{ job: ExportJob; download: { url: string; expires_in: number } }> {
-    const response = await fetch(`${API_BASE_URL}/exports/control/${controlId}`, {
+    const response = await authFetch(`${API_BASE_URL}/exports/control/${controlId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async createSectionExport(sectionCode: string): Promise<{ job: ExportJob; download: { url: string; expires_in: number } }> {
-    const response = await fetch(`${API_BASE_URL}/exports/section/${sectionCode}`, {
+    const response = await authFetch(`${API_BASE_URL}/exports/section/${sectionCode}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async createFullExport(): Promise<{ job: ExportJob; download: { url: string; expires_in: number } }> {
-    const response = await fetch(`${API_BASE_URL}/exports/full`, {
+    const response = await authFetch(`${API_BASE_URL}/exports/full`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async downloadExport(jobId: string): Promise<{ url: string; expires_in: number }> {
-    const response = await fetch(`${API_BASE_URL}/exports/${jobId}/download`);
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    const response = await authFetch(`${API_BASE_URL}/exports/${jobId}/download`);
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async listControlExports(controlId: number): Promise<ExportJob[]> {
-    const response = await fetch(`${API_BASE_URL}/exports/control/${controlId}`);
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    const response = await authFetch(`${API_BASE_URL}/exports/control/${controlId}`);
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async getDashboardSummary(): Promise<DashboardSummary> {
-    const response = await fetch(`${API_BASE_URL}/dashboard/summary`);
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    const response = await authFetch(`${API_BASE_URL}/dashboard/summary`);
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async getAlerts(): Promise<ComplianceAlert[]> {
-    const response = await fetch(`${API_BASE_URL}/alerts`);
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    const response = await authFetch(`${API_BASE_URL}/alerts`);
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async getControlNotes(controlId: number): Promise<ControlNote[]> {
-    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/notes`);
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/notes`);
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async createControlNote(controlId: number, payload: { note_type: string; text: string }): Promise<ControlNote> {
-    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/notes`, {
+    const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/notes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async updateControlNote(controlId: number, noteId: string, payload: Partial<{ note_type: string; text: string; resolved: boolean }>): Promise<ControlNote> {
-    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/notes/${noteId}`, {
+    const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/notes/${noteId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async deleteControlNote(controlId: number, noteId: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/notes/${noteId}`, {
+    const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/notes/${noteId}`, {
       method: 'DELETE',
     });
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
   },
 
   async createEvidenceItem(payload: {
@@ -314,52 +431,102 @@ export const api = {
     valid_from?: string;
     valid_until?: string;
   }): Promise<EvidenceItem> {
-    const response = await fetch(`${API_BASE_URL}/evidence-items`, {
+    const response = await authFetch(`${API_BASE_URL}/evidence-items`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async uploadEvidenceFiles(evidenceItemId: string, files: File[]): Promise<{ files: EvidenceFile[] }> {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
-    const response = await fetch(`${API_BASE_URL}/evidence-items/${evidenceItemId}/files`, {
+    const response = await authFetch(`${API_BASE_URL}/evidence-items/${evidenceItemId}/files`, {
       method: 'POST',
       body: formData,
     });
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
   async linkEvidenceToControl(controlId: number, evidenceItemId: string, note?: string): Promise<EvidenceLink> {
-    const response = await fetch(`${API_BASE_URL}/controls/${controlId}/link-evidence`, {
+    const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/link-evidence`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ evidence_item_id: evidenceItemId, note }),
     });
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
+  },
+
+  async unlinkEvidenceFromControl(controlId: number, linkId: string): Promise<void> {
+    const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/unlink-evidence/${linkId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
   },
 
   async downloadEvidenceFile(fileId: string): Promise<{ url: string; expires_in: number }> {
-    const response = await fetch(`${API_BASE_URL}/evidence-files/${fileId}/download`);
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
-    }
+    const response = await authFetch(`${API_BASE_URL}/evidence-files/${fileId}/download`);
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
     return response.json();
   },
 
-  async healthCheck(): Promise<any> {
+  async healthCheck(): Promise<unknown> {
     const response = await fetch(`${API_BASE_URL}/health`);
     return response.json();
-  }
+  },
+
+  // Users (ADMIN only)
+  async getUsers(): Promise<UserList[]> {
+    const response = await authFetch(`${API_BASE_URL}/users`);
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    return response.json();
+  },
+
+  async createUser(payload: { username: string; password: string; first_name?: string; last_name?: string; roles?: string[] }): Promise<UserList> {
+    const response = await authFetch(`${API_BASE_URL}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    return response.json();
+  },
+
+  async updateUser(userId: number, payload: Partial<{ first_name: string; last_name: string; is_active: boolean; roles: string[] }>): Promise<UserList> {
+    const response = await authFetch(`${API_BASE_URL}/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    return response.json();
+  },
+
+  async resetUserPassword(userId: number, password: string): Promise<void> {
+    const response = await authFetch(`${API_BASE_URL}/users/${userId}/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+  },
+
+  // Audit (ADMIN/MANAGER/AUDITOR)
+  async getAuditEvents(params?: { action?: string; entity_type?: string; after?: string; before?: string; q?: string }): Promise<AuditEvent[]> {
+    const sp = new URLSearchParams();
+    if (params?.action) sp.append('action', params.action);
+    if (params?.entity_type) sp.append('entity_type', params.entity_type);
+    if (params?.after) sp.append('after', params.after);
+    if (params?.before) sp.append('before', params.before);
+    if (params?.q) sp.append('q', params.q);
+    const qs = sp.toString();
+    const url = `${API_BASE_URL}/audit/events${qs ? `?${qs}` : ''}`;
+    const response = await authFetch(url);
+    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    return response.json();
+  },
 };
