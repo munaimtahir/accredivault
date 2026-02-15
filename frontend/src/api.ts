@@ -310,22 +310,20 @@ export const api = {
     if (params?.q) queryParams.append('q', params.q);
     const url = `${API_BASE_URL}/controls/?${queryParams.toString()}`;
     const response = await authFetch(url);
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
-    }
+    await checkOk(response);
     const data = await response.json();
     return data.results || data;
   },
 
   async getControlTimeline(controlId: number): Promise<ControlTimeline> {
     const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/timeline`);
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
   async getControlStatus(controlId: number): Promise<ControlStatus> {
     const response = await authFetch(`${API_BASE_URL}/controls/${controlId}/status`);
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -335,7 +333,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ remarks }),
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
@@ -345,7 +343,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ remarks }),
     });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+    await checkOk(response);
     return response.json();
   },
 
